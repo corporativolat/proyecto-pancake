@@ -47,16 +47,9 @@ export default function ProjectDetail() {
     }, 500);
   }, [id, patchProject, showToast]);
 
-  useEffect(() => {
-    const sc = phasesScrollRef.current;
-    if (!sc || !headerRef.current) return;
-    const onScroll = () => {
-      if (sc.scrollTop > 30) headerRef.current.classList.add('shrink');
-      else headerRef.current.classList.remove('shrink');
-    };
-    sc.addEventListener('scroll', onScroll);
-    return () => sc.removeEventListener('scroll', onScroll);
-  }, [project?.id]);
+  // (Eliminado el toggle de .shrink en scroll: clipaba el título/botones cuando
+  // el header crecía con los campos oficiales nuevos. El header ahora mantiene
+  // su altura natural y la sección Hoja de Ruta scrolea libremente.)
 
   if (!project) return <div className="flex-1 flex items-center justify-center text-ink-400">Proyecto no encontrado.</div>;
 
@@ -239,8 +232,8 @@ export default function ProjectDetail() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-hidden flex">
-        <div className={`${mobileTab === 'roadmap' ? 'flex' : 'hidden'} md:flex w-full md:w-[600px] md:border-r flex-col bg-ink-50/40`}>
+      <div className="flex-1 overflow-hidden flex min-h-0">
+        <div className={`${mobileTab === 'roadmap' ? 'flex' : 'hidden'} md:flex w-full md:w-[600px] md:border-r flex-col bg-ink-50/40 min-h-0 min-w-0`}>
           <div className="p-4 bg-white border-b flex justify-between items-center">
             <span className="font-black text-[10px] text-ink-400 uppercase tracking-widest flex items-center gap-2">
               <Map className="w-3 h-3" /> Hoja de Ruta
@@ -263,7 +256,7 @@ export default function ProjectDetail() {
             <Comments projectId={project.id} />
           </div>
         </div>
-        <div className={`${mobileTab === 'gantt' ? 'block' : 'hidden'} md:block flex-1 bg-white overflow-x-auto scroller relative`}>
+        <div className={`${mobileTab === 'gantt' ? 'block' : 'hidden'} md:block flex-1 bg-white overflow-x-auto scroller relative min-h-0 min-w-0`}>
           <GanttCanvas project={project} editable={editable} onChange={refreshProjects} onEditTask={(t, phaseId) => setEditingTask({ ...t, phaseId })} />
         </div>
       </div>
