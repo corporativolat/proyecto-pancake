@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { FolderKanban, ClipboardList, Target, ExternalLink, PartyPopper } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
+import { useT } from '../lib/i18n.jsx';
 import { calcProjectProgress } from '../lib/utils';
 import { countUp, animateBars, staggerIn, confetti, reduced } from '../lib/motion';
 import { updateTask } from '../lib/data';
 import { useToast } from '../lib/toast';
+import TeamMetricsBar from '../components/TeamMetricsBar.jsx';
 
 export default function Team() {
   const projects = useStore(s => s.projects);
@@ -15,6 +17,7 @@ export default function Team() {
   const navigate = useNavigate();
   const ref = useRef(null);
   const showToast = useToast(s => s.show);
+  const { t } = useT();
 
   const myProjects = useMemo(() => projects.filter(p => p.owner_id === profile?.id || (p.member_ids || []).includes(profile?.id)), [projects, profile]);
   const myTasks = useMemo(() => {
@@ -55,17 +58,17 @@ export default function Team() {
     <section ref={ref} className="flex-1 p-4 md:p-10 overflow-y-auto scroller">
       <div className="max-w-[1400px] mx-auto">
         <header className="mb-6 md:mb-10">
-          <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">Vista Productiva</p>
-          <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">Mi Espacio</h2>
-          <p className="text-ink-500 font-medium mt-1">Mis proyectos, tareas y rendimiento.</p>
+          <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">{t('team.section')}</p>
+          <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">{t('team.title')}</h2>
+          <p className="text-ink-500 font-medium mt-1">{t('team.subtitle')}</p>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-10">
-          <KPI label="Proyectos Activos" target={myProjects.length} icon={<FolderKanban className="w-4 h-4 text-violet-600" />} iconBg="bg-violet-50" valueClass="text-ink-900" />
-          <KPI label="Tareas Pendientes" target={myTasks.length} icon={<ClipboardList className="w-4 h-4 text-amber-600" />} iconBg="bg-amber-50" valueClass="text-amber-500" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6 md:mb-8">
+          <KPI label={t('team.kpi.projects')} target={myProjects.length} icon={<FolderKanban className="w-4 h-4 text-violet-600" />} iconBg="bg-violet-50" valueClass="text-ink-900" />
+          <KPI label={t('team.kpi.tasks')} target={myTasks.length} icon={<ClipboardList className="w-4 h-4 text-amber-600" />} iconBg="bg-amber-50" valueClass="text-amber-500" />
           <div className="kpi-card kpi-primary" data-stagger>
             <div className="flex justify-between items-start mb-3">
-              <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">Mi Cumplimiento</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{t('team.kpi.completion')}</div>
               <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center"><Target className="w-4 h-4 text-white" /></div>
             </div>
             <div className="text-4xl font-black tabular" data-kpi={myProg} data-suffix="%">0%</div>
@@ -73,6 +76,10 @@ export default function Team() {
               <div className="h-full bg-white rounded-full" data-bar={myProg} style={{ width: 0 }} />
             </div>
           </div>
+        </div>
+
+        <div className="mb-6 md:mb-8">
+          <TeamMetricsBar projects={myProjects} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

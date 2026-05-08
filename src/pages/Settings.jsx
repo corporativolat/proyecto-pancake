@@ -149,9 +149,10 @@ export default function Settings() {
             <Globe className="w-3.5 h-3.5" /> {t('settings.preferences')}
           </h3>
           <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-2 block">{t('settings.language')}</label>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button onClick={() => changeLang('es')} className={`cat-pill ${lang === 'es' ? 'active' : 'bg-ink-100 text-ink-600'}`}>🇪🇸 {t('settings.lang.es')}</button>
             <button onClick={() => changeLang('en')} className={`cat-pill ${lang === 'en' ? 'active' : 'bg-ink-100 text-ink-600'}`}>🇬🇧 {t('settings.lang.en')}</button>
+            <button onClick={() => changeLang('pt')} className={`cat-pill ${lang === 'pt' ? 'active' : 'bg-ink-100 text-ink-600'}`}>🇧🇷 {t('settings.lang.pt')}</button>
           </div>
         </div>
 

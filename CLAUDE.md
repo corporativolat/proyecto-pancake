@@ -48,7 +48,8 @@ SPA React 18 + Vite. Backend = Supabase (Auth + Postgres + Realtime). No hay ser
 - `src/lib/store.js` — store Zustand con `projects`, `profiles`, `categories` y acciones `refreshAll/refreshProjects/refreshProfiles/refreshCategories/patchProject`.
 - `src/lib/data.js` — todos los `select`/`insert`/`update`/`delete` contra Supabase. `fetchProjects` hace el join anidado `projects → phases → tasks` + `milestones` + `project_members`, y normaliza ordenando por `position` y exponiendo `member_ids` en cada proyecto. `reorderPhases` llama al RPC `reorder_phases` (transaccional).
 - `src/lib/supabase.js` — cliente único.
-- `src/lib/i18n.jsx`, `src/lib/theme.jsx` — providers (idioma `es/en` persistido en `profiles.language`; tema `light/dark` en `localStorage` como `proTheme`).
+- `src/lib/i18n.jsx`, `src/lib/theme.jsx` — providers (idioma `es/en/pt` persistido en `profiles.language`; tema `light/dark` en `localStorage` como `proTheme`). Para añadir un idioma: extender el objeto `DICT` y agregar la opción al selector en `Settings.jsx`.
+- `src/lib/exporters.js` — `downloadCSV({filename, columns, rows})` y `downloadPDF({filename, title, subtitle, columns, rows})`. CSV usa BOM U+FEFF para que Excel detecte UTF-8. PDF usa jspdf + jspdf-autotable (chunk lazy: `html2canvas` se separa). `columns` es `[{ header, accessor: row => value }]`.
 - `src/lib/logger.js` — wrapper sobre `console.*` que solo emite en `import.meta.env.DEV`. Usar siempre en lugar de `console.*` directo.
 - `src/lib/confirm.jsx` — `<ConfirmHost />` global montado en `App.jsx` + `askConfirm({title, message, danger})` que devuelve `Promise<boolean>`. Reemplaza `window.confirm`.
 - `src/lib/toast.js` + `src/components/Toast.jsx` — `useToast().show(msg, kind)` con `kind` ∈ `success|error|info`. Reemplaza `alert()`.
@@ -56,7 +57,7 @@ SPA React 18 + Vite. Backend = Supabase (Auth + Postgres + Realtime). No hay ser
 - `src/components/ErrorBoundary.jsx` — clase `ErrorBoundary` que envuelve toda la app en `main.jsx`. Captura crashes de render y muestra UI de fallback con reintentar/recargar.
 - `src/components/ReportButton.jsx` — botón flotante 🐛 abajo-derecha (z-40) visible para todo usuario autenticado. Modal manual con title/description/severity. Adjunta automáticamente `page_url` y `user_agent`. Ningún hook a `window.onerror` (captura solo manual).
 - `src/pages/*` — páginas top-level (Dashboard, Team, Projects, ProjectDetail, Admin, AdminReports, Settings, Login). Dashboard, ProjectDetail, Admin, AdminReports, Settings se cargan con `lazy()` + `<Suspense>` para code-split.
-- `src/components/*` — UI reutilizable (Layout, Modal, Toast, CommandPalette, Shortcuts, Comments, ActivityFeed, ErrorBoundary, ReportButton…).
+- `src/components/*` — UI reutilizable (Layout, Modal, Toast, CommandPalette, Shortcuts, Comments, ActivityFeed, ErrorBoundary, ReportButton, TeamMetricsBar, TeamMetricsModal…). `TeamMetricsBar` (en `pages/Team.jsx`) muestra una tarjeta por cada proyecto del usuario con avance, tareas, salud y ETA, más un botón "Expandir" que abre `TeamMetricsModal`. El modal renderiza 3 charts (avance por proyecto, distribución por estado, tareas hechas vs pendientes) y permite descargar el reporte como PDF (jsPDF + autotable) o CSV/Excel (UTF-8 BOM) usando `src/lib/exporters.js`.
 
 ### Responsive / móvil
 
