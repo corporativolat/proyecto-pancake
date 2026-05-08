@@ -10,10 +10,15 @@
 --
 -- Fix: dejar el SELECT cubierto SOLO por la policy *_read y dividir *_write
 -- en INSERT/UPDATE/DELETE separados con la misma lógica de antes.
+--
+-- Idempotente: cada create va precedido por drop policy if exists.
 -- ===========================================================
 
 -- 1) project_members ---------------------------------------------------------
 drop policy if exists "members_write" on pro_gestion.project_members;
+drop policy if exists "members_insert" on pro_gestion.project_members;
+drop policy if exists "members_update" on pro_gestion.project_members;
+drop policy if exists "members_delete" on pro_gestion.project_members;
 
 create policy "members_insert" on pro_gestion.project_members for insert to authenticated
 with check (
@@ -39,6 +44,9 @@ using (
 
 -- 2) phases -----------------------------------------------------------------
 drop policy if exists "phases_write" on pro_gestion.phases;
+drop policy if exists "phases_insert" on pro_gestion.phases;
+drop policy if exists "phases_update" on pro_gestion.phases;
+drop policy if exists "phases_delete" on pro_gestion.phases;
 
 create policy "phases_insert" on pro_gestion.phases for insert to authenticated
 with check (
@@ -64,6 +72,9 @@ using (
 
 -- 3) tasks ------------------------------------------------------------------
 drop policy if exists "tasks_write" on pro_gestion.tasks;
+drop policy if exists "tasks_insert" on pro_gestion.tasks;
+drop policy if exists "tasks_update" on pro_gestion.tasks;
+drop policy if exists "tasks_delete" on pro_gestion.tasks;
 
 create policy "tasks_insert" on pro_gestion.tasks for insert to authenticated
 with check (
@@ -109,6 +120,9 @@ using (
 
 -- 4) milestones -------------------------------------------------------------
 drop policy if exists "milestones_write" on pro_gestion.milestones;
+drop policy if exists "milestones_insert" on pro_gestion.milestones;
+drop policy if exists "milestones_update" on pro_gestion.milestones;
+drop policy if exists "milestones_delete" on pro_gestion.milestones;
 
 create policy "milestones_insert" on pro_gestion.milestones for insert to authenticated
 with check (
@@ -133,10 +147,10 @@ using (
 );
 
 -- 5) categories -------------------------------------------------------------
--- categories_admin_write usa "for all" pero su condición no consulta tablas
--- con RLS recursiva. Aún así lo dividimos para mantener consistencia y dejar
--- el SELECT cubierto solo por categories_read_all.
 drop policy if exists "categories_admin_write" on pro_gestion.categories;
+drop policy if exists "categories_admin_insert" on pro_gestion.categories;
+drop policy if exists "categories_admin_update" on pro_gestion.categories;
+drop policy if exists "categories_admin_delete" on pro_gestion.categories;
 
 create policy "categories_admin_insert" on pro_gestion.categories for insert to authenticated
 with check (pro_gestion.is_admin());
