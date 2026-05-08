@@ -1,6 +1,7 @@
 import { Component } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { logger } from '../lib/logger';
+import { tStatic } from '../lib/i18n.jsx';
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -28,8 +29,8 @@ export default class ErrorBoundary extends Component {
               <AlertTriangle className="w-6 h-6 text-red-500" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-ink-900">Algo salió mal</h2>
-              <p className="text-xs font-bold text-ink-400 uppercase tracking-widest">Error de aplicación</p>
+              <h2 className="text-xl font-black text-ink-900">{tStatic('error.title')}</h2>
+              <p className="text-xs font-bold text-ink-400 uppercase tracking-widest">{tStatic('error.subtitle')}</p>
             </div>
           </div>
           <pre className="text-xs bg-ink-50 p-4 rounded-xl text-ink-700 overflow-auto max-h-48 mb-5 whitespace-pre-wrap break-words">
@@ -37,10 +38,10 @@ export default class ErrorBoundary extends Component {
           </pre>
           <div className="flex gap-3">
             <button onClick={this.reset} className="btn-primary flex-1 justify-center">
-              <RefreshCw className="w-4 h-4" /> REINTENTAR
+              <RefreshCw className="w-4 h-4" /> {tStatic('error.retry')}
             </button>
             <button onClick={() => window.location.reload()} className="btn-ghost">
-              RECARGAR
+              {tStatic('error.reload')}
             </button>
           </div>
         </div>

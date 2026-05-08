@@ -2,10 +2,12 @@ import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import gsap from 'gsap';
 import { reduced } from '../lib/motion';
+import { useT } from '../lib/i18n.jsx';
 
 export default function Modal({ title, children, onClose, onSave, footer, maxWidth = 'max-w-2xl' }) {
   const overlayRef = useRef(null);
   const cardRef = useRef(null);
+  const { t } = useT();
 
   useEffect(() => {
     if (reduced) return;
@@ -26,12 +28,12 @@ export default function Modal({ title, children, onClose, onSave, footer, maxWid
           <h3 className="text-lg font-black tracking-tight">{title}</h3>
           <button onClick={close} className="text-white/60 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
-        <div className="p-7 space-y-4">{children}</div>
+        <div className="modal-body scroller-pro">{children}</div>
         <div className="modal-footer">
           {footer || (
             <>
-              <button onClick={close} className="btn-ghost">Cancelar</button>
-              {onSave && <button onClick={onSave} className="btn-primary">GUARDAR</button>}
+              <button onClick={close} className="btn-ghost">{t('common.cancel')}</button>
+              {onSave && <button onClick={onSave} className="btn-primary">{t('common.save')}</button>}
             </>
           )}
         </div>

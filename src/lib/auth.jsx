@@ -7,7 +7,7 @@ const AuthCtx = createContext(null);
 const PERMS = {
   admin:   { viewAll: true,  createProject: true,  editAll: true,  deleteProject: true,  manageUsers: true,  manageCategories: true,  viewKPIs: true },
   gerente: { viewAll: true,  createProject: true,  editAll: true,  deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: true },
-  miembro: { viewAll: false, createProject: false, editAll: false, deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: false }
+  miembro: { viewAll: false, createProject: true,  editAll: false, deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: false }
 };
 
 export function AuthProvider({ children }) {

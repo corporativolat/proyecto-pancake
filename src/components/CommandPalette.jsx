@@ -36,7 +36,7 @@ export default function CommandPalette({ open, onClose }) {
     out.push({ id: 'go-team', kind: 'page', label: t('nav.team'), icon: <Users className="w-3.5 h-3.5" />, action: () => navigate('/team') });
     out.push({ id: 'go-projects', kind: 'page', label: t('nav.projects'), icon: <FolderKanban className="w-3.5 h-3.5" />, action: () => navigate('/projects') });
     out.push({ id: 'go-settings', kind: 'page', label: t('nav.settings'), icon: <SettingsIcon className="w-3.5 h-3.5" />, action: () => navigate('/settings') });
-    out.push({ id: 'theme', kind: 'cmd', label: theme === 'dark' ? 'Modo claro' : 'Modo oscuro', icon: theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />, action: () => toggleTheme() });
+    out.push({ id: 'theme', kind: 'cmd', label: theme === 'dark' ? t('cmd.lightMode') : t('cmd.darkMode'), icon: theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />, action: () => toggleTheme() });
 
     projects.forEach(p => out.push({ id: p.id, kind: 'project', label: p.title, hint: p.company, icon: <FolderKanban className="w-3.5 h-3.5 text-violet-500" />, action: () => navigate(`/projects/${p.id}`) }));
     profiles.forEach(p => out.push({ id: 'u-' + p.id, kind: 'user', label: p.name, hint: p.email, icon: <Users className="w-3.5 h-3.5 text-emerald-500" />, action: () => navigate('/admin') }));
@@ -67,11 +67,11 @@ export default function CommandPalette({ open, onClose }) {
       <div ref={cardRef} className="cmdk-card">
         <div className="flex items-center gap-2 px-4 border-b border-ink-100">
           <Search className="w-4 h-4 text-ink-400" />
-          <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} onKeyDown={handleKey} placeholder="Buscar proyecto, persona, comando..." className="cmdk-input" />
+          <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} onKeyDown={handleKey} placeholder={t('cmd.placeholder')} className="cmdk-input" />
           <span className="cmdk-kbd">ESC</span>
         </div>
         <div className="cmdk-list scroller">
-          {!items.length && <div className="empty py-8"><p className="text-xs italic">Sin resultados</p></div>}
+          {!items.length && <div className="empty py-8"><p className="text-xs italic">{t('cmd.empty')}</p></div>}
           {items.map((it, i) => (
             <div key={it.id} onClick={() => { it.action(); close(); }} onMouseEnter={() => setIdx(i)} className={`cmdk-item ${i === idx ? 'active' : ''}`}>
               {it.icon}
@@ -82,9 +82,9 @@ export default function CommandPalette({ open, onClose }) {
           ))}
         </div>
         <div className="flex items-center gap-3 px-3 py-2 border-t border-ink-100 text-[10px] text-ink-400">
-          <span><span className="cmdk-kbd">↑↓</span> navegar</span>
-          <span><span className="cmdk-kbd">⏎</span> abrir</span>
-          <span><span className="cmdk-kbd">⌘K</span> alternar</span>
+          <span><span className="cmdk-kbd">↑↓</span> {t('cmd.nav')}</span>
+          <span><span className="cmdk-kbd">⏎</span> {t('cmd.open')}</span>
+          <span><span className="cmdk-kbd">⌘K</span> {t('cmd.toggle')}</span>
         </div>
       </div>
     </div>

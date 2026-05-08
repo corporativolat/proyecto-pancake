@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { LayoutDashboard, ArrowRight } from 'lucide-react';
 import gsap from 'gsap';
 import { useAuth } from '../lib/auth.jsx';
+import { useT } from '../lib/i18n.jsx';
 import { reduced, shake } from '../lib/motion';
 
 export default function Login() {
   const { signIn, signUp } = useAuth();
+  const { t } = useT();
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [name, setName] = useState('');
@@ -58,35 +60,35 @@ export default function Login() {
             <div data-logo className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-gradient-to-br from-violet-500 to-fuchsia-600 mb-6 shadow-2xl shadow-violet-500/30">
               <LayoutDashboard className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-3xl font-black tracking-tighter text-white">PRO-GESTIÓN</h1>
-            <p className="text-[10px] font-bold text-white/40 uppercase tracking-[0.3em] mt-2">Plataforma Estratégica Interna</p>
+            <h1 className="text-3xl font-black tracking-tighter text-white">{t('login.title')}</h1>
+            <p className="text-[10px] font-bold text-white/40 uppercase tracking-[0.3em] mt-2">{t('login.subtitle')}</p>
           </div>
           <form onSubmit={submit} className="space-y-5">
             {mode === 'signup' && (
               <div>
-                <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-2 block">Nombre</label>
+                <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-2 block">{t('login.name')}</label>
                 <input value={name} onChange={e => setName(e.target.value)} required className="input-glass" />
               </div>
             )}
             <div>
-              <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-2 block">Correo</label>
+              <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-2 block">{t('login.email')}</label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="input-glass" />
             </div>
             <div>
-              <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-2 block">Contraseña</label>
+              <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-2 block">{t('login.password')}</label>
               <input type="password" value={pass} onChange={e => setPass(e.target.value)} required className="input-glass" />
             </div>
             {err && <div className="text-xs text-red-300 font-bold bg-red-500/20 backdrop-blur p-3 rounded-xl border border-red-500/30">{err}</div>}
             <button type="submit" disabled={busy} className="btn-primary w-full justify-center disabled:opacity-60">
-              <span>{busy ? 'PROCESANDO…' : (mode === 'signin' ? 'INGRESAR' : 'REGISTRARME')}</span>
+              <span>{busy ? t('login.processing') : (mode === 'signin' ? t('login.signin') : t('login.signup'))}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
             <button type="button" onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setErr(''); }} className="w-full text-[11px] text-white/50 hover:text-white font-semibold transition">
-              {mode === 'signin' ? '¿No tienes cuenta? Crear una' : '¿Ya tienes cuenta? Ingresar'}
+              {mode === 'signin' ? t('login.toSignup') : t('login.toSignin')}
             </button>
             <div className="text-[10px] text-white/40 font-medium pt-5 border-t border-white/10 mt-5 leading-relaxed">
-              <strong className="text-white/60">Acceso:</strong><br />
-              Cuentas nuevas se crean con rol limitado. Solicita permisos a un administrador.
+              <strong className="text-white/60">{t('login.access')}</strong><br />
+              {t('login.accessNote')}
             </div>
           </form>
         </div>

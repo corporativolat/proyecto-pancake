@@ -3,35 +3,37 @@ import { useNavigate } from 'react-router-dom';
 import { Bug, ChevronLeft, Filter, Trash2, ExternalLink } from 'lucide-react';
 import { useToast } from '../lib/toast';
 import { askConfirm } from '../lib/confirm.jsx';
+import { useT } from '../lib/i18n.jsx';
 import { fetchErrorReports, updateErrorReport, deleteErrorReport } from '../lib/reports';
 import Avatar from '../components/Avatar.jsx';
 import Modal from '../components/Modal.jsx';
 
-const STATUS = {
-  open: { label: 'Abierto', cls: 'bg-amber-100 text-amber-700' },
-  in_progress: { label: 'En curso', cls: 'bg-violet-100 text-violet-700' },
-  resolved: { label: 'Resuelto', cls: 'bg-emerald-100 text-emerald-700' },
-  wontfix: { label: 'No se arreglará', cls: 'bg-ink-100 text-ink-500' },
-};
-const SEV = {
-  low: { label: 'Baja', cls: 'text-emerald-500' },
-  normal: { label: 'Normal', cls: 'text-ink-500' },
-  high: { label: 'Alta', cls: 'text-amber-500' },
-  urgent: { label: 'Urgente', cls: 'text-red-500' },
-};
-
 export default function AdminReports() {
   const navigate = useNavigate();
   const showToast = useToast(s => s.show);
+  const { t, lang } = useT();
   const [reports, setReports] = useState([]);
   const [scope, setScope] = useState('all');
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
 
+  const STATUS = {
+    open: { label: t('reports.status.open'), cls: 'bg-amber-100 text-amber-700' },
+    in_progress: { label: t('reports.status.in_progress'), cls: 'bg-violet-100 text-violet-700' },
+    resolved: { label: t('reports.status.resolved'), cls: 'bg-emerald-100 text-emerald-700' },
+    wontfix: { label: t('reports.status.wontfix'), cls: 'bg-ink-100 text-ink-500' },
+  };
+  const SEV = {
+    low: { label: t('reports.sev.low'), cls: 'text-emerald-500' },
+    normal: { label: t('reports.sev.normal'), cls: 'text-ink-500' },
+    high: { label: t('reports.sev.high'), cls: 'text-amber-500' },
+    urgent: { label: t('reports.sev.urgent'), cls: 'text-red-500' },
+  };
+
   const load = async () => {
     setLoading(true);
     try { setReports(await fetchErrorReports({ scope })); }
-    catch (e) { showToast('Error al cargar: ' + e.message, 'error'); }
+    catch (e) { showToast(t('reports.errorLoad') + e.message, 'error'); }
     finally { setLoading(false); }
   };
 
@@ -39,48 +41,48 @@ export default function AdminReports() {
   useEffect(() => { load(); }, [scope]);
 
   const setStatus = async (id, status) => {
-    try { await updateErrorReport(id, { status }); await load(); showToast('✓ Estado actualizado'); }
-    catch (e) { showToast('Error: ' + e.message, 'error'); }
+    try { await updateErrorReport(id, { status }); await load(); showToast(t('reports.statusUpdated')); }
+    catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
   };
 
   const remove = async (id) => {
-    const ok = await askConfirm({ title: 'Eliminar reporte', message: '¿Confirmar eliminación permanente?', danger: true });
+    const ok = await askConfirm({ title: t('reports.confirm.deleteTitle'), message: t('reports.confirm.deleteMsg'), danger: true });
     if (!ok) return;
-    try { await deleteErrorReport(id); setSelected(null); await load(); showToast('Reporte eliminado'); }
-    catch (e) { showToast('Error: ' + e.message, 'error'); }
+    try { await deleteErrorReport(id); setSelected(null); await load(); showToast(t('reports.deleted')); }
+    catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
   };
 
   const fmt = (iso) => {
     const d = new Date(iso);
-    return d.toLocaleString('es', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleString(lang, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   };
 
   return (
     <section className="flex-1 p-4 md:p-10 overflow-y-auto scroller">
       <div className="max-w-6xl mx-auto">
         <button onClick={() => navigate('/admin')} className="text-[11px] font-bold text-ink-500 hover:text-violet-600 flex items-center gap-1 mb-3">
-          <ChevronLeft className="w-3 h-3" /> Volver a Administración
+          <ChevronLeft className="w-3 h-3" /> {t('reports.back')}
         </button>
         <header className="mb-6 md:mb-8 flex flex-col md:flex-row md:justify-between md:items-end gap-3">
           <div>
-            <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">Soporte</p>
+            <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">{t('reports.section')}</p>
             <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight flex items-center gap-3">
-              <Bug className="w-7 h-7 md:w-9 md:h-9 text-red-500" /> Reportes de error
+              <Bug className="w-7 h-7 md:w-9 md:h-9 text-red-500" /> {t('reports.title')}
             </h2>
-            <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">Issues enviados por usuarios desde el botón flotante.</p>
+            <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">{t('reports.subtitle')}</p>
           </div>
           <div className="flex items-center gap-2 bg-white rounded-2xl p-1 border border-ink-100 self-start md:self-auto overflow-x-auto">
             <Filter className="w-3.5 h-3.5 text-ink-400 ml-2" />
-            <button onClick={() => setScope('all')} className={`text-[11px] font-bold px-3 py-1.5 rounded-xl ${scope === 'all' ? 'bg-violet-100 text-violet-700' : 'text-ink-500'}`}>Todos</button>
-            <button onClick={() => setScope('open')} className={`text-[11px] font-bold px-3 py-1.5 rounded-xl ${scope === 'open' ? 'bg-violet-100 text-violet-700' : 'text-ink-500'}`}>Abiertos</button>
+            <button onClick={() => setScope('all')} className={`text-[11px] font-bold px-3 py-1.5 rounded-xl ${scope === 'all' ? 'bg-violet-100 text-violet-700' : 'text-ink-500'}`}>{t('reports.filter.all')}</button>
+            <button onClick={() => setScope('open')} className={`text-[11px] font-bold px-3 py-1.5 rounded-xl ${scope === 'open' ? 'bg-violet-100 text-violet-700' : 'text-ink-500'}`}>{t('reports.filter.open')}</button>
           </div>
         </header>
 
         {loading ? (
-          <p className="text-sm text-ink-400">Cargando…</p>
+          <p className="text-sm text-ink-400">{t('reports.loading')}</p>
         ) : reports.length === 0 ? (
           <div className="card-light p-12 text-center text-ink-400 text-sm">
-            Sin reportes {scope === 'open' ? 'abiertos' : ''} por ahora.
+            {scope === 'open' ? t('reports.emptyOpen') : t('reports.emptyAll')}
           </div>
         ) : (
           <div className="space-y-3">
@@ -115,8 +117,8 @@ export default function AdminReports() {
           maxWidth="max-w-2xl"
           footer={(
             <>
-              <button onClick={() => remove(selected.id)} className="btn-danger mr-auto"><Trash2 className="w-3.5 h-3.5" /> Eliminar</button>
-              <button onClick={() => setSelected(null)} className="btn-ghost">Cerrar</button>
+              <button onClick={() => remove(selected.id)} className="btn-danger mr-auto"><Trash2 className="w-3.5 h-3.5" /> {t('reports.btn.delete')}</button>
+              <button onClick={() => setSelected(null)} className="btn-ghost">{t('reports.btn.close')}</button>
             </>
           )}
         >
@@ -129,22 +131,22 @@ export default function AdminReports() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Estado">
+            <Field label={t('reports.field.status')}>
               <select value={selected.status} onChange={e => { const s = e.target.value; setSelected({ ...selected, status: s }); setStatus(selected.id, s); }} className="input-light">
                 {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             </Field>
-            <Field label="Severidad">
+            <Field label={t('reports.field.severity')}>
               <input value={SEV[selected.severity]?.label || selected.severity} disabled className="input-light opacity-60" />
             </Field>
           </div>
 
-          <Field label="Descripción">
+          <Field label={t('reports.field.description')}>
             <p className="text-sm bg-ink-50 rounded-xl p-3 text-ink-700 whitespace-pre-wrap leading-relaxed">{selected.description}</p>
           </Field>
 
           {selected.page_url && (
-            <Field label="URL al reportar">
+            <Field label={t('reports.field.url')}>
               <a href={selected.page_url} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-600 hover:text-violet-800 break-all flex items-center gap-1">
                 <ExternalLink className="w-3 h-3" /> {selected.page_url}
               </a>
@@ -152,7 +154,7 @@ export default function AdminReports() {
           )}
 
           {selected.user_agent && (
-            <Field label="User agent">
+            <Field label={t('reports.field.ua')}>
               <p className="text-[10px] font-mono text-ink-500 bg-ink-50 rounded-lg p-2 break-all">{selected.user_agent}</p>
             </Field>
           )}

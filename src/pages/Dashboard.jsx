@@ -5,6 +5,7 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { FolderKanban, Zap, CheckCircle2, TrendingUp, Search } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
+import { useT } from '../lib/i18n.jsx';
 import { calcProjectProgress, healthSignal, STATUSES } from '../lib/utils';
 import { countUp, animateBars, staggerIn, reduced } from '../lib/motion';
 import Avatar from '../components/Avatar.jsx';
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const categories = useStore(s => s.categories);
   const loading = useStore(s => s.loading);
   const { can, profile } = useAuth();
+  const { t, lang } = useT();
   const [filter, setFilter] = useState('');
   const navigate = useNavigate();
   const ref = useRef(null);
@@ -85,23 +87,23 @@ export default function Dashboard() {
       <div className="max-w-[1500px] mx-auto">
         <header className="mb-6 md:mb-10 flex flex-col md:flex-row md:justify-between md:items-end gap-3">
           <div>
-            <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">Vista Gerencial</p>
-            <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">Panel de Portafolio</h2>
-            <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">Indicadores estratégicos y salud global.</p>
+            <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">{t('dash.section')}</p>
+            <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">{t('dash.title')}</h2>
+            <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">{t('dash.subtitle')}</p>
           </div>
           <div className="md:text-right">
-            <div className="text-[10px] font-bold text-ink-400 uppercase tracking-widest">Última actualización</div>
-            <div className="text-sm font-bold text-ink-700">{new Date().toLocaleDateString('es', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+            <div className="text-[10px] font-bold text-ink-400 uppercase tracking-widest">{t('dash.lastUpdate')}</div>
+            <div className="text-sm font-bold text-ink-700">{new Date().toLocaleDateString(lang, { day: '2-digit', month: 'long', year: 'numeric' })}</div>
           </div>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 mb-10">
-          <KPI label="Iniciativas" target={total} icon={<FolderKanban className="w-4 h-4 text-violet-600" />} iconBg="bg-violet-50" valueClass="text-ink-900" />
-          <KPI label="Activos" target={active} icon={<Zap className="w-4 h-4 text-amber-600" />} iconBg="bg-amber-50" valueClass="text-amber-500" />
-          <KPI label="Finalizados" target={finished} icon={<CheckCircle2 className="w-4 h-4 text-emerald-600" />} iconBg="bg-emerald-50" valueClass="text-emerald-500" />
+          <KPI label={t('dash.kpi.initiatives')} target={total} icon={<FolderKanban className="w-4 h-4 text-violet-600" />} iconBg="bg-violet-50" valueClass="text-ink-900" />
+          <KPI label={t('dash.kpi.active')} target={active} icon={<Zap className="w-4 h-4 text-amber-600" />} iconBg="bg-amber-50" valueClass="text-amber-500" />
+          <KPI label={t('dash.kpi.finished')} target={finished} icon={<CheckCircle2 className="w-4 h-4 text-emerald-600" />} iconBg="bg-emerald-50" valueClass="text-emerald-500" />
           <div className="kpi-card kpi-primary" data-stagger>
             <div className="flex justify-between items-start mb-3">
-              <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">Salud Portafolio</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{t('dash.kpi.health')}</div>
               <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center"><TrendingUp className="w-4 h-4 text-white" /></div>
             </div>
             <div className="text-4xl font-black tabular" data-kpi={avg} data-suffix="%">0%</div>
@@ -114,8 +116,8 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-10">
           <div className="lg:col-span-2 card-light p-7" data-stagger>
             <div className="flex justify-between items-center mb-5">
-              <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest">Salud por Categoría</h3>
-              <span className="text-[10px] font-bold text-ink-400">% promedio de avance</span>
+              <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest">{t('dash.categoryHealth')}</h3>
+              <span className="text-[10px] font-bold text-ink-400">{t('dash.avgProgress')}</span>
             </div>
             <div className="space-y-4">
               {categories.map(cat => {
@@ -141,12 +143,12 @@ export default function Dashboard() {
           </div>
 
           <div className="card-light p-7" data-stagger>
-            <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest mb-5">Distribución por Estado</h3>
+            <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest mb-5">{t('dash.statusDist')}</h3>
             <div className="relative h-56 mb-5">
               <Doughnut data={donutData} options={{ cutout: '72%', plugins: { legend: { display: false }, tooltip: { backgroundColor: '#09090b', padding: 12, cornerRadius: 12 } }, animation: { duration: 1100 }, maintainAspectRatio: false }} />
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <div className="text-3xl font-black text-ink-900 tabular" data-kpi={total}>0</div>
-                <div className="text-[9px] font-black text-ink-400 uppercase tracking-widest">PROYECTOS</div>
+                <div className="text-[9px] font-black text-ink-400 uppercase tracking-widest">{t('dash.projectsLabel')}</div>
               </div>
             </div>
             <div className="space-y-1.5">
@@ -169,17 +171,17 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-10">
           <div className="lg:col-span-2 card-light overflow-hidden" data-stagger>
             <div className="px-7 py-5 border-b flex justify-between items-center">
-              <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest">Proyectos Activos</h3>
+              <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest">{t('dash.activeProjects')}</h3>
               <div className="relative">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-                <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar..." className="bg-ink-100 border border-ink-100 rounded-xl pl-9 pr-4 py-2 text-xs font-semibold focus:ring-2 focus:ring-violet-500 outline-none" />
+                <input value={filter} onChange={e => setFilter(e.target.value)} placeholder={t('dash.search')} className="bg-ink-100 border border-ink-100 rounded-xl pl-9 pr-4 py-2 text-xs font-semibold focus:ring-2 focus:ring-violet-500 outline-none" />
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-ink-50/60 border-b">
                   <tr>
-                    <Th>Proyecto</Th><Th>Categoría</Th><Th>Líder</Th><Th>Estado</Th><Th>Avance</Th>
+                    <Th>{t('dash.col.project')}</Th><Th>{t('dash.col.category')}</Th><Th>{t('dash.col.owner')}</Th><Th>{t('dash.col.status')}</Th><Th>{t('dash.col.progress')}</Th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ink-100">
@@ -222,7 +224,7 @@ export default function Dashboard() {
                     <tr><td colSpan={5}>
                       <div className="empty">
                         <div className="icon-wrap"><FolderKanban className="w-7 h-7 text-ink-400" /></div>
-                        <p className="text-sm text-ink-500 italic font-medium">Sin proyectos.</p>
+                        <p className="text-sm text-ink-500 italic font-medium">{t('dash.empty')}</p>
                       </div>
                     </td></tr>
                   )}
@@ -233,9 +235,9 @@ export default function Dashboard() {
 
           <div className="space-y-5">
           <div className="card-light p-7" data-stagger>
-            <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest mb-5">Top Líderes</h3>
+            <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest mb-5">{t('dash.topOwners')}</h3>
             <div className="space-y-3">
-              {!topOwners.length && <p className="text-xs text-ink-400 italic">Sin líderes asignados.</p>}
+              {!topOwners.length && <p className="text-xs text-ink-400 italic">{t('dash.noLeaders')}</p>}
               {topOwners.map(it => (
                 <div key={it.user?.id} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-ink-50 transition">
                   <Avatar user={it.user} size={40} />

@@ -41,8 +41,8 @@ export default function Settings() {
   const handlePhoto = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) { showToast('Archivo debe ser imagen', 'error'); return; }
-    if (file.size > 4 * 1024 * 1024) { showToast('Tamaño máximo: 4 MB', 'error'); return; }
+    if (!file.type.startsWith('image/')) { showToast(t('settings.fileNotImage'), 'error'); return; }
+    if (file.size > 4 * 1024 * 1024) { showToast(t('settings.fileTooBig'), 'error'); return; }
     setBusy(true);
     try {
       if (profile.avatar_url) { await removeAvatar(profile.avatar_url).catch(() => {}); }
@@ -69,7 +69,7 @@ export default function Settings() {
   };
 
   const changePassword = async () => {
-    if (!pass || pass.length < 8) { showToast('Mínimo 8 caracteres', 'error'); return; }
+    if (!pass || pass.length < 8) { showToast(t('settings.minPassword'), 'error'); return; }
     setBusy(true);
     try {
       const { error } = await supabase.auth.updateUser({ password: pass });
@@ -109,7 +109,7 @@ export default function Settings() {
                 <button onClick={() => fileRef.current?.click()} className="btn-soft" disabled={busy}><Camera className="w-3.5 h-3.5" /> {t('settings.upload')}</button>
                 {profile?.avatar_url && <button onClick={removePhoto} className="btn-danger" disabled={busy}><Trash2 className="w-3.5 h-3.5" /> {t('settings.removePhoto')}</button>}
               </div>
-              <p className="text-[10px] text-ink-400 mt-2">JPG, PNG (max 4 MB)</p>
+              <p className="text-[10px] text-ink-400 mt-2">{t('settings.photoHint')}</p>
             </div>
           </div>
 
@@ -166,7 +166,7 @@ export default function Settings() {
             <input type="password" value={pass} onChange={e => setPass(e.target.value)} className="input-light flex-1" placeholder="••••••••" />
             <button onClick={changePassword} disabled={busy || !pass} className="btn-primary disabled:opacity-60">{t('settings.changePassword')}</button>
           </div>
-          <p className="text-[10px] text-ink-400 mt-2">Mínimo 8 caracteres</p>
+          <p className="text-[10px] text-ink-400 mt-2">{t('settings.minPassword')}</p>
         </div>
       </div>
     </section>

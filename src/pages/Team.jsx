@@ -50,8 +50,8 @@ export default function Team() {
         confetti(host, '#10b981');
       }
       await refreshProjects();
-      showToast(!task.completed ? '✓ Tarea completada' : 'Tarea reactivada');
-    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+      showToast(!task.completed ? t('team.toast.completed') : t('team.toast.reactivated'));
+    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
   };
 
   return (
@@ -85,7 +85,7 @@ export default function Team() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="card-light p-7" data-stagger>
             <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest mb-5 flex items-center gap-2">
-              <FolderKanban className="w-3.5 h-3.5" /> Mis Proyectos
+              <FolderKanban className="w-3.5 h-3.5" /> {t('team.myProjects')}
             </h3>
             <div className="space-y-3">
               {myProjects.map(p => {
@@ -110,7 +110,7 @@ export default function Team() {
               {!myProjects.length && (
                 <div className="empty">
                   <div className="icon-wrap"><FolderKanban className="w-7 h-7 text-ink-400" /></div>
-                  <p className="text-xs text-ink-400 italic font-medium">Sin proyectos asignados.</p>
+                  <p className="text-xs text-ink-400 italic font-medium">{t('team.empty.projects')}</p>
                 </div>
               )}
             </div>
@@ -118,7 +118,7 @@ export default function Team() {
 
           <div className="card-light p-7" data-stagger>
             <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest mb-5 flex items-center gap-2">
-              <ClipboardList className="w-3.5 h-3.5" /> Tareas Pendientes
+              <ClipboardList className="w-3.5 h-3.5" /> {t('team.pending')}
             </h3>
             <div className="space-y-2">
               {myTasks.slice(0, 20).map(({ proj, phase, task }) => (
@@ -136,7 +136,7 @@ export default function Team() {
               {!myTasks.length && (
                 <div className="empty">
                   <div className="icon-wrap"><PartyPopper className="w-7 h-7 text-emerald-500" /></div>
-                  <p className="text-xs text-ink-400 italic font-medium">Sin tareas pendientes. ¡Buen trabajo!</p>
+                  <p className="text-xs text-ink-400 italic font-medium">{t('team.empty.tasks')}</p>
                 </div>
               )}
             </div>

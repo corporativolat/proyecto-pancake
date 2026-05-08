@@ -5,6 +5,7 @@ import gsap from 'gsap';
 import { Draggable } from 'gsap/Draggable';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
+import { useT } from '../lib/i18n.jsx';
 import { calcProjectProgress, healthSignal, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP } from '../lib/utils';
 import { animateBars, staggerIn, magnetic, reduced } from '../lib/motion';
 import Avatar from '../components/Avatar.jsx';
@@ -21,6 +22,7 @@ export default function Projects() {
   const categories = useStore(s => s.categories);
   const refreshProjects = useStore(s => s.refreshProjects);
   const { profile, can } = useAuth();
+  const { t } = useT();
   const [filter, setFilter] = useState('all');
   const navigate = useNavigate();
   const loc = useLocation();
@@ -75,13 +77,13 @@ export default function Projects() {
     try {
       const newP = await createProject(payload);
       await refreshProjects();
-      showToast('✓ Proyecto creado');
+      showToast(t('pj.toast.created'));
       try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
       setDraftInitial(null);
       setShowNew(false);
       setNewMode('inline');
       navigate(`/projects/${newP.id}`);
-    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
   };
 
   // Cerrar SIN borrar borrador. El draft sobrevive para retomar después.
@@ -93,7 +95,7 @@ export default function Projects() {
     setDraftInitial(null);
     setShowNew(false);
     setNewMode('inline');
-    showToast('Borrador descartado');
+    showToast(t('projects.draftDiscarded'));
   };
 
   // En modo inline ocultamos el grid: la página entra "en modo creación".
@@ -118,12 +120,12 @@ export default function Projects() {
         <header className="mb-6 md:mb-10">
           <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
             <div>
-              <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">Iniciativas</p>
-              <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">{showNew && newMode === 'inline' ? 'Nueva Iniciativa' : 'Proyectos'}</h2>
-              <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">{showNew && newMode === 'inline' ? 'Completa la ficha. Cada campo trae su descripción.' : 'Lista completa del portafolio.'}</p>
+              <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">{t('projects.section')}</p>
+              <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">{showNew && newMode === 'inline' ? t('projects.newInitiative') : t('projects.title')}</h2>
+              <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">{showNew && newMode === 'inline' ? t('projects.formCompleteHint') : t('projects.subtitle')}</p>
             </div>
             {!showNew && can('createProject') && (
-              <button onClick={() => setShowNew(true)} className="btn-primary self-start md:self-auto flex-shrink-0"><Plus className="w-4 h-4" /> NUEVO</button>
+              <button onClick={() => setShowNew(true)} className="btn-primary self-start md:self-auto flex-shrink-0"><Plus className="w-4 h-4" /> {t('projects.new')}</button>
             )}
           </div>
 
@@ -143,6 +145,7 @@ export default function Projects() {
             categories={categories}
             profiles={profiles}
             defaultOwnerId={profile?.id}
+            lockOwner={!can('editAll')}
             initialForm={draftInitial}
             onClose={cancelNew}
             onDiscard={discardDraft}
@@ -166,13 +169,13 @@ export default function Projects() {
                   <div className="flex justify-between items-start mb-4 mt-1">
                     <div className="flex items-center gap-2">
                       {cat && <span className="text-[10px] font-bold px-2.5 py-1 rounded-full" style={{ background: cat.color + '1a', color: cat.color }}>{cat.name}</span>}
-                      <span className={`status-dot status-${h}`} title="Salud"></span>
+                      <span className={`status-dot status-${h}`} title={t('projects.healthLabel')}></span>
                     </div>
                     <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-ink-50 text-ink-600 border border-ink-100">{pj.status}</span>
                   </div>
                   <h3 className="text-lg font-black text-ink-900 mb-1 group-hover:text-violet-600 transition leading-tight">{pj.title}</h3>
                   <p className="text-[10px] text-ink-400 font-semibold uppercase tracking-widest mb-3">{pj.company}</p>
-                  <p className="text-xs text-ink-500 italic line-clamp-2 mb-5 h-8 leading-relaxed">{pj.goal || 'Sin objetivo definido.'}</p>
+                  <p className="text-xs text-ink-500 italic line-clamp-2 mb-5 h-8 leading-relaxed">{pj.goal || t('projects.noGoal')}</p>
                   <div className="flex items-center gap-3 mb-4">
                     <div className="flex-1 bg-ink-100 h-1.5 rounded-full overflow-hidden">
                       <div className="progress-fill h-full rounded-full" data-bar={prog} style={{ width: 0 }} />
@@ -182,7 +185,7 @@ export default function Projects() {
                   <div className="flex items-center justify-between pt-4 border-t border-ink-100">
                     <div className="flex items-center gap-2">
                       {owner && <Avatar user={owner} size={28} />}
-                      <span className="text-[11px] font-semibold text-ink-600">{owner?.name || 'Sin líder'}</span>
+                      <span className="text-[11px] font-semibold text-ink-600">{owner?.name || t('projects.noLeader')}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-[10px] font-semibold text-ink-500 tabular">
                       <CheckSquare className="w-3 h-3" />
@@ -196,7 +199,7 @@ export default function Projects() {
               <div className="col-span-3">
                 <div className="empty">
                   <div className="icon-wrap"><FolderOpen className="w-8 h-8 text-ink-400" /></div>
-                  <p className="text-sm text-ink-400 italic font-medium">Sin proyectos en esta categoría.</p>
+                  <p className="text-sm text-ink-400 italic font-medium">{t('projects.empty')}</p>
                 </div>
               </div>
             )}
@@ -210,6 +213,7 @@ export default function Projects() {
           categories={categories}
           profiles={profiles}
           defaultOwnerId={profile?.id}
+          lockOwner={!can('editAll')}
           initialForm={draftInitial}
           onClose={cancelNew}
           onDiscard={discardDraft}
@@ -222,6 +226,7 @@ export default function Projects() {
 }
 
 function FilterDropdown({ categories, filter, setFilter, countByCat }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
   const menuRef = useRef(null);
@@ -249,7 +254,7 @@ function FilterDropdown({ categories, filter, setFilter, countByCat }) {
   }, [open]);
 
   const current = filter === 'all' ? null : categories.find(c => c.id === filter);
-  const currentLabel = current ? current.name : 'Todas las categorías';
+  const currentLabel = current ? current.name : t('projects.allCategories');
   const currentColor = current ? current.color : '#71717a';
   const currentCount = filter === 'all' ? (countByCat.all || 0) : (countByCat[filter] || 0);
 
@@ -258,7 +263,7 @@ function FilterDropdown({ categories, filter, setFilter, countByCat }) {
   return (
     <div className="mt-5 md:mt-6">
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-[9px] font-black text-ink-400 uppercase tracking-[0.25em]">Filtrar por tipo</span>
+        <span className="text-[9px] font-black text-ink-400 uppercase tracking-[0.25em]">{t('projects.filterByType')}</span>
         <div className="flex-1 h-px bg-gradient-to-r from-ink-200/70 to-transparent" />
       </div>
       <div ref={wrapRef} className="relative w-full md:max-w-sm">
@@ -288,7 +293,7 @@ function FilterDropdown({ categories, filter, setFilter, countByCat }) {
               <FilterRow
                 active={filter === 'all'}
                 color="#71717a"
-                label="Todas las categorías"
+                label={t('projects.allCategories')}
                 count={countByCat.all || 0}
                 onClick={() => select('all')}
               />
@@ -328,8 +333,9 @@ function FilterRow({ active, color, label, count, onClick }) {
   );
 }
 
-function NewProjectForm({ mode, categories, profiles, defaultOwnerId, initialForm, onClose, onDiscard, onSubmit, onToggleMode }) {
+function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner, initialForm, onClose, onDiscard, onSubmit, onToggleMode }) {
   const showToast = useToast(s => s.show);
+  const { t } = useT();
   const today = new Date().toISOString().split('T')[0];
   const isDraft = !!initialForm;
   const [form, setForm] = useState(() => initialForm || {
@@ -407,10 +413,10 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, initialFor
   const set = (k, v) => setForm(s => ({ ...s, [k]: v }));
 
   const submit = () => {
-    if (!form.title.trim()) { showToast('El título es obligatorio', 'error'); return; }
-    if (!form.owner_id) { showToast('Selecciona un responsable interno', 'error'); return; }
+    if (!form.title.trim()) { showToast(t('projects.error.titleRequired'), 'error'); return; }
+    if (!form.owner_id) { showToast(t('projects.error.ownerRequired'), 'error'); return; }
     if (form.projected_end_date && form.start_date && form.projected_end_date < form.start_date) {
-      showToast('La fecha proyectada no puede ser anterior al inicio', 'error'); return;
+      showToast(t('projects.error.dateInvalid'), 'error'); return;
     }
     onSubmit({
       title: form.title.trim(),
@@ -450,9 +456,9 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, initialFor
         <div className="flex items-center gap-3 min-w-0">
           {mode === 'popup' && <span className="text-white/60 text-xs font-black tracking-widest">⋮⋮</span>}
           <div className="min-w-0">
-            <h3 className={`text-base font-black tracking-tight ${mode === 'popup' ? 'text-white' : 'text-ink-900'}`}>Nueva Iniciativa</h3>
+            <h3 className={`text-base font-black tracking-tight ${mode === 'popup' ? 'text-white' : 'text-ink-900'}`}>{t('projects.newInitiative')}</h3>
             <p className={`text-[10px] font-semibold ${mode === 'popup' ? 'text-white/70' : 'text-ink-500'}`}>
-              {mode === 'popup' ? 'Arrastra esta barra para mover · Anclar para volver al panel' : 'Completa la ficha del proyecto'}
+              {mode === 'popup' ? t('projects.dragHint') : t('projects.completeForm')}
             </p>
           </div>
         </div>
@@ -460,11 +466,11 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, initialFor
           <button
             onClick={onToggleMode}
             className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${mode === 'popup' ? 'bg-white/15 hover:bg-white/25 text-white' : 'bg-violet-100 hover:bg-violet-200 text-violet-700'}`}
-            title={mode === 'popup' ? 'Anclar al panel' : 'Expandir como ventana movible'}
+            title={mode === 'popup' ? t('projects.dockTitle') : t('projects.expandTitle')}
           >
-            {mode === 'popup' ? <><Minimize2 className="w-3 h-3" /> Anclar</> : <><Maximize2 className="w-3 h-3" /> Expandir</>}
+            {mode === 'popup' ? <><Minimize2 className="w-3 h-3" /> {t('pj.dock')}</> : <><Maximize2 className="w-3 h-3" /> {t('pj.expand')}</>}
           </button>
-          <button onClick={onClose} className={`p-1.5 rounded-lg transition ${mode === 'popup' ? 'text-white/70 hover:text-white hover:bg-white/15' : 'text-ink-400 hover:text-ink-700 hover:bg-ink-100'}`} title="Cerrar">
+          <button onClick={onClose} className={`p-1.5 rounded-lg transition ${mode === 'popup' ? 'text-white/70 hover:text-white hover:bg-white/15' : 'text-ink-400 hover:text-ink-700 hover:bg-ink-100'}`} title={t('projects.close')}>
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -475,26 +481,26 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, initialFor
           <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
             <span className="text-base leading-none">📝</span>
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-bold text-amber-800 leading-tight">Retomando borrador</p>
-              <p className="text-[10px] text-amber-700 leading-snug mt-0.5">Tus cambios se guardan automáticamente. Continúa donde lo dejaste.</p>
+              <p className="text-[11px] font-bold text-amber-800 leading-tight">{t('projects.draftBanner.title')}</p>
+              <p className="text-[10px] text-amber-700 leading-snug mt-0.5">{t('projects.draftBanner.body')}</p>
             </div>
           </div>
         )}
         <p className="text-[11px] text-ink-500 bg-violet-50/60 border border-violet-100 rounded-xl px-4 py-2.5 leading-relaxed">
-          Cada campo trae su descripción debajo del título — úsalas si tienes dudas sobre qué va en cada espacio. Los campos marcados con * son obligatorios. <span className="font-bold">Si cambias de página o cierras sin enviar, tu borrador se conserva.</span>
+          {t('projects.helpHeader')} <span className="font-bold">{t('projects.helpHeaderBold')}</span>
         </p>
 
-        <NewField label="Proyectos · Título *" help={PROJECT_FIELD_HELP.title}>
-          <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="Título del proyecto" className="input-light" autoFocus />
+        <NewField label={t('projects.field.title')} help={PROJECT_FIELD_HELP.title}>
+          <input value={form.title} onChange={e => set('title', e.target.value)} placeholder={t('projects.field.titlePlaceholder')} className="input-light" autoFocus />
         </NewField>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <NewField label="Empresa o Cliente" help={PROJECT_FIELD_HELP.company}>
+          <NewField label={t('projects.field.company')} help={PROJECT_FIELD_HELP.company}>
             <input value={form.company} onChange={e => set('company', e.target.value)} className="input-light" />
           </NewField>
-          <NewField label="Tipo · Categoría" help={PROJECT_FIELD_HELP.category_id}>
+          <NewField label={t('projects.field.category')} help={PROJECT_FIELD_HELP.category_id}>
             <select value={form.category_id} onChange={e => set('category_id', e.target.value)} className="input-light">
-              <option value="">— sin tipo —</option>
+              <option value="">{t('projects.field.categoryEmpty')}</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             {catHelp && (
@@ -506,55 +512,65 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, initialFor
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <NewField label="Dependencia" help={PROJECT_FIELD_HELP.client_lead}>
-            <input value={form.client_lead} onChange={e => set('client_lead', e.target.value)} placeholder="Persona de cara al cliente" className="input-light" />
+          <NewField label={t('projects.field.dependency')} help={PROJECT_FIELD_HELP.client_lead}>
+            <input value={form.client_lead} onChange={e => set('client_lead', e.target.value)} placeholder={t('projects.field.dependencyPlaceholder')} className="input-light" />
           </NewField>
-          <NewField label="Responsable (Líder interno) *" help={PROJECT_FIELD_HELP.owner_id}>
-            <select value={form.owner_id} onChange={e => set('owner_id', e.target.value)} className="input-light">
-              {profiles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+          <NewField label={t('projects.field.responsible')} help={PROJECT_FIELD_HELP.owner_id}>
+            <select
+              value={form.owner_id}
+              onChange={e => set('owner_id', e.target.value)}
+              disabled={lockOwner}
+              className="input-light disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {(lockOwner ? profiles.filter(u => u.id === defaultOwnerId) : profiles).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
+            {lockOwner && (
+              <p className="mt-1.5 text-[11px] text-ink-500 italic leading-snug">
+                {t('projects.field.responsibleNote')}
+              </p>
+            )}
           </NewField>
         </div>
 
-        <NewField label="Estado" help={PROJECT_FIELD_HELP.status}>
+        <NewField label={t('projects.field.status')} help={PROJECT_FIELD_HELP.status}>
           <select value={form.status} onChange={e => set('status', e.target.value)} className="input-light">
             {STATUSES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
           </select>
         </NewField>
 
-        <NewField label="Objetivo" help={PROJECT_FIELD_HELP.goal}>
-          <textarea value={form.goal} onChange={e => set('goal', e.target.value)} className="input-light h-20 resize-none" placeholder="¿Cuál es la meta y el alcance?" />
+        <NewField label={t('projects.field.goal')} help={PROJECT_FIELD_HELP.goal}>
+          <textarea value={form.goal} onChange={e => set('goal', e.target.value)} className="input-light h-20 resize-none" placeholder={t('projects.field.goalPlaceholder')} />
         </NewField>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <NewField label="Fecha de inicio" help={PROJECT_FIELD_HELP.start_date}>
+          <NewField label={t('projects.field.startDate')} help={PROJECT_FIELD_HELP.start_date}>
             <input type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input-light" />
           </NewField>
-          <NewField label="Fin proyectada" help={PROJECT_FIELD_HELP.projected_end_date}>
+          <NewField label={t('projects.field.projectedEnd')} help={PROJECT_FIELD_HELP.projected_end_date}>
             <input type="date" value={form.projected_end_date} onChange={e => set('projected_end_date', e.target.value)} className="input-light" />
           </NewField>
-          <NewField label="Fecha de entrega" help={PROJECT_FIELD_HELP.delivery_date}>
+          <NewField label={t('projects.field.deliveryDate')} help={PROJECT_FIELD_HELP.delivery_date}>
             <input type="date" value={form.delivery_date} onChange={e => set('delivery_date', e.target.value)} className="input-light" />
           </NewField>
         </div>
 
-        <NewField label="Contrato" help={PROJECT_FIELD_HELP.contract_url}>
-          <input value={form.contract_url} onChange={e => set('contract_url', e.target.value)} placeholder="URL o referencia al contrato firmado" className="input-light" />
+        <NewField label={t('projects.field.contract')} help={PROJECT_FIELD_HELP.contract_url}>
+          <input value={form.contract_url} onChange={e => set('contract_url', e.target.value)} placeholder={t('projects.field.contractPlaceholder')} className="input-light" />
         </NewField>
 
-        <NewField label="Observaciones" help={PROJECT_FIELD_HELP.observation}>
-          <textarea value={form.observation} onChange={e => set('observation', e.target.value)} className="input-light h-20 resize-none" placeholder="Estado, riesgos, logros…" />
+        <NewField label={t('projects.field.observation')} help={PROJECT_FIELD_HELP.observation}>
+          <textarea value={form.observation} onChange={e => set('observation', e.target.value)} className="input-light h-20 resize-none" placeholder={t('projects.field.observationPlaceholder')} />
         </NewField>
       </div>
 
       <div className="px-6 py-4 border-t bg-ink-50/60 flex flex-wrap justify-end gap-2 flex-shrink-0">
         {onDiscard && (
-          <button onClick={onDiscard} className="btn-ghost text-red-600 hover:text-red-700 mr-auto" title="Eliminar borrador y empezar limpio">
-            <Trash2 className="w-3.5 h-3.5" /> Descartar borrador
+          <button onClick={onDiscard} className="btn-ghost text-red-600 hover:text-red-700 mr-auto" title={t('projects.discardDraftTitle')}>
+            <Trash2 className="w-3.5 h-3.5" /> {t('projects.discardDraftBtn')}
           </button>
         )}
-        <button onClick={onClose} className="btn-ghost">Cerrar</button>
-        <button onClick={submit} className="btn-primary">CREAR PROYECTO</button>
+        <button onClick={onClose} className="btn-ghost">{t('projects.close')}</button>
+        <button onClick={submit} className="btn-primary">{t('projects.create')}</button>
       </div>
     </div>
   );

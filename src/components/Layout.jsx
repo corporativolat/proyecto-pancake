@@ -58,7 +58,7 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
   // No crea proyectos vacíos directamente: respeta el draft del autosave.
   const handleNew = () => {
     if (!can('createProject')) {
-      showToast('Sin permiso para crear proyectos', 'error');
+      showToast(t('layout.noPermissionCreate'), 'error');
       return;
     }
     navigate('/projects', { state: { openNew: true } });
@@ -70,7 +70,7 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
       {mobileOpen && (
         <button
           type="button"
-          aria-label="Cerrar menú"
+          aria-label={t('layout.closeMenu')}
           onClick={() => setMobileOpen(false)}
           className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden"
         />
@@ -88,7 +88,7 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
           </div>
           <button onClick={onOpenCmd} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition text-white/50 hover:text-white text-xs">
             <Search className="w-3.5 h-3.5" />
-            <span className="flex-1 text-left">Buscar...</span>
+            <span className="flex-1 text-left">{t('common.search')}</span>
             <span className="cmdk-kbd !bg-white/10 !border-white/10 !text-white/60">⌘K</span>
           </button>
         </div>
@@ -129,10 +129,10 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
             </div>
           </button>
           <div className="flex items-center gap-2 mt-2">
-            <button onClick={toggleTheme} title="Tema" className="theme-toggle">
+            <button onClick={toggleTheme} title={t('layout.theme')} className="theme-toggle">
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
-            <button onClick={onOpenShort} title="Atajos (?)" className="theme-toggle font-bold">?</button>
+            <button onClick={onOpenShort} title={t('layout.shortcuts')} className="theme-toggle font-bold">?</button>
             <button onClick={signOut} title={t('nav.logout')} className="flex-1 text-[10px] font-bold text-white/30 hover:text-red-400 transition flex items-center justify-center gap-1.5 py-2 rounded-xl hover:bg-white/5">
               <LogOut className="w-3 h-3" /> {t('nav.logout')}
             </button>
@@ -146,7 +146,7 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            aria-label="Abrir menú"
+            aria-label={t('layout.openMenu')}
             className="p-2 rounded-lg hover:bg-ink-100 transition"
           >
             <Menu className="w-5 h-5 text-ink-700" />
@@ -157,10 +157,10 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
             </div>
             <span className="font-black text-sm tracking-tight text-ink-900 truncate">PRO-GESTIÓN</span>
           </div>
-          <button onClick={onOpenCmd} aria-label="Buscar" className="p-2 rounded-lg hover:bg-ink-100 transition">
+          <button onClick={onOpenCmd} aria-label={t('layout.searchAria')} className="p-2 rounded-lg hover:bg-ink-100 transition">
             <Search className="w-4 h-4 text-ink-600" />
           </button>
-          <button onClick={toggleTheme} aria-label="Tema" className="p-2 rounded-lg hover:bg-ink-100 transition">
+          <button onClick={toggleTheme} aria-label={t('layout.theme')} className="p-2 rounded-lg hover:bg-ink-100 transition">
             {theme === 'dark' ? <Sun className="w-4 h-4 text-ink-600" /> : <Moon className="w-4 h-4 text-ink-600" />}
           </button>
         </div>

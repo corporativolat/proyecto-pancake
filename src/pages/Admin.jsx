@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Users, Tag, Plus, X, Bug } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
+import { useT } from '../lib/i18n.jsx';
 import { avatarClass } from '../lib/utils';
 import Avatar from '../components/Avatar.jsx';
 import { staggerIn, reduced } from '../lib/motion';
@@ -18,6 +19,7 @@ export default function Admin() {
   const refreshProfiles = useStore(s => s.refreshProfiles);
   const refreshCategories = useStore(s => s.refreshCategories);
   const { profile } = useAuth();
+  const { t } = useT();
   const navigate = useNavigate();
   const ref = useRef(null);
   const showToast = useToast(s => s.show);
@@ -33,33 +35,33 @@ export default function Admin() {
       await updateProfile(u.id, { name: u.name, role: u.role, avatar: u.avatar });
       await refreshProfiles();
       setEditing(null);
-      showToast('✓ Usuario actualizado');
-    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+      showToast(t('admin.toast.userSaved'));
+    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
   };
 
   const removeUser = async (id) => {
-    if (id === profile.id) { showToast('No puedes eliminarte', 'error'); return; }
-    const ok = await askConfirm({ title: 'Eliminar perfil', message: 'Esta acción no borra la cuenta de autenticación. ¿Continuar?', danger: true });
+    if (id === profile.id) { showToast(t('admin.toast.cannotDeleteSelf'), 'error'); return; }
+    const ok = await askConfirm({ title: t('admin.confirm.deleteProfileTitle'), message: t('admin.confirm.deleteProfileMsg'), danger: true });
     if (!ok) return;
-    try { await deleteProfile(id); await refreshProfiles(); showToast('Perfil eliminado'); }
-    catch (e) { showToast('Error: ' + e.message, 'error'); }
+    try { await deleteProfile(id); await refreshProfiles(); showToast(t('admin.toast.profileDeleted')); }
+    catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
   };
 
   const addCat = async () => {
     const colors = ['#7c3aed','#10b981','#f59e0b','#ef4444','#a855f7','#06b6d4','#ec4899'];
-    try { await createCategory('Nueva Categoría', colors[Math.floor(Math.random()*colors.length)]); await refreshCategories(); }
-    catch (e) { showToast('Error: ' + e.message, 'error'); }
+    try { await createCategory(t('admin.cat.newName'), colors[Math.floor(Math.random()*colors.length)]); await refreshCategories(); }
+    catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
   };
   const removeCat = async (id) => {
-    if (projects.some(p => p.category_id === id)) { showToast('Categoría en uso por uno o más proyectos', 'error'); return; }
-    const ok = await askConfirm({ title: 'Eliminar categoría', message: '¿Confirmar eliminación?', danger: true });
+    if (projects.some(p => p.category_id === id)) { showToast(t('admin.cat.inUse'), 'error'); return; }
+    const ok = await askConfirm({ title: t('admin.confirm.deleteCatTitle'), message: t('admin.confirm.deleteCatMsg'), danger: true });
     if (!ok) return;
     try { await deleteCategory(id); await refreshCategories(); }
-    catch (e) { showToast('Error: ' + e.message, 'error'); }
+    catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
   };
   const patchCat = async (id, patch) => {
     try { await updateCategory(id, patch); await refreshCategories(); }
-    catch (e) { showToast('Error: ' + e.message, 'error'); }
+    catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
   };
 
   return (
@@ -67,21 +69,21 @@ export default function Admin() {
       <div className="max-w-6xl mx-auto">
         <header className="mb-6 md:mb-10 flex flex-col md:flex-row md:justify-between md:items-end gap-3">
           <div>
-            <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">Configuración</p>
-            <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">Administración</h2>
-            <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">Usuarios, permisos y categorías.</p>
+            <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">{t('admin.section')}</p>
+            <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">{t('admin.title')}</h2>
+            <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">{t('admin.subtitle')}</p>
           </div>
           <button onClick={() => navigate('/admin/reports')} className="btn-soft self-start md:self-auto">
-            <Bug className="w-3.5 h-3.5" /> Reportes de error
+            <Bug className="w-3.5 h-3.5" /> {t('admin.errorReports')}
           </button>
         </header>
 
         <div className="card-light p-7 mb-6" data-stagger>
           <div className="flex justify-between items-center mb-5">
             <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest flex items-center gap-2">
-              <Users className="w-3.5 h-3.5" /> Usuarios del Sistema
+              <Users className="w-3.5 h-3.5" /> {t('admin.users')}
             </h3>
-            <span className="text-[10px] text-ink-400">Para crear: que la persona se registre desde el login</span>
+            <span className="text-[10px] text-ink-400">{t('admin.usersHint')}</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {profiles.map(u => {
@@ -98,10 +100,10 @@ export default function Admin() {
                     <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${roleColor}`}>{u.role}</span>
                   </div>
                   <div className="flex items-center justify-between pt-3 border-t border-ink-100">
-                    <span className="text-[11px] font-semibold text-ink-500">{proyectos} proyecto{proyectos !== 1 ? 's' : ''}</span>
+                    <span className="text-[11px] font-semibold text-ink-500">{proyectos} {proyectos !== 1 ? t('admin.projectsCount.many') : t('admin.projectsCount.one')}</span>
                     <div className="flex gap-3">
-                      <button onClick={() => setEditing({ ...u })} className="text-violet-600 hover:text-violet-800 text-[11px] font-bold">Editar</button>
-                      {u.id !== profile.id && <button onClick={() => removeUser(u.id)} className="text-red-500 hover:text-red-700 text-[11px] font-bold">Eliminar</button>}
+                      <button onClick={() => setEditing({ ...u })} className="text-violet-600 hover:text-violet-800 text-[11px] font-bold">{t('admin.edit')}</button>
+                      {u.id !== profile.id && <button onClick={() => removeUser(u.id)} className="text-red-500 hover:text-red-700 text-[11px] font-bold">{t('admin.delete')}</button>}
                     </div>
                   </div>
                 </div>
@@ -113,9 +115,9 @@ export default function Admin() {
         <div className="card-light p-7" data-stagger>
           <div className="flex justify-between items-center mb-5">
             <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest flex items-center gap-2">
-              <Tag className="w-3.5 h-3.5" /> Categorías de Proyecto
+              <Tag className="w-3.5 h-3.5" /> {t('admin.categories')}
             </h3>
-            <button onClick={addCat} className="btn-primary-sm"><Plus className="w-3.5 h-3.5" /> NUEVA</button>
+            <button onClick={addCat} className="btn-primary-sm"><Plus className="w-3.5 h-3.5" /> {t('admin.newCategory')}</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {categories.map(c => {
@@ -133,7 +135,7 @@ export default function Admin() {
                     <input type="color" defaultValue={c.color} onBlur={e => e.target.value !== c.color && patchCat(c.id, { color: e.target.value })} className="w-6 h-6 rounded cursor-pointer border-0" />
                     <span className="text-[10px] font-mono text-ink-400">{c.color}</span>
                   </div>
-                  <div className="text-[11px] font-semibold text-ink-500 tabular">{used} proyecto{used !== 1 ? 's' : ''}</div>
+                  <div className="text-[11px] font-semibold text-ink-500 tabular">{used} {used !== 1 ? t('admin.projectsCount.many') : t('admin.projectsCount.one')}</div>
                 </div>
               );
             })}
@@ -142,19 +144,19 @@ export default function Admin() {
       </div>
 
       {editing && (
-        <Modal title="Editar Usuario" onClose={() => setEditing(null)} onSave={() => saveUser(editing)}>
+        <Modal title={t('admin.userModal.title')} onClose={() => setEditing(null)} onSave={() => saveUser(editing)}>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Nombre"><input value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} className="input-light" /></Field>
-            <Field label="Correo"><input value={editing.email} disabled className="input-light opacity-60" /></Field>
+            <Field label={t('admin.field.name')}><input value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} className="input-light" /></Field>
+            <Field label={t('admin.field.email')}><input value={editing.email} disabled className="input-light opacity-60" /></Field>
           </div>
-          <Field label="Rol">
+          <Field label={t('admin.field.role')}>
             <select value={editing.role} onChange={e => setEditing({ ...editing, role: e.target.value })} className="input-light">
-              <option value="admin">Directivo (Admin)</option>
-              <option value="gerente">Gerente</option>
-              <option value="miembro">Miembro</option>
+              <option value="admin">{t('admin.role.admin')}</option>
+              <option value="gerente">{t('admin.role.gerente')}</option>
+              <option value="miembro">{t('admin.role.miembro')}</option>
             </select>
           </Field>
-          <Field label="Avatar">
+          <Field label={t('admin.field.avatar')}>
             <div className="grid grid-cols-6 gap-2">
               {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
                 <button key={n} type="button" onClick={() => setEditing({ ...editing, avatar: n })} className={`w-12 h-12 rounded-2xl text-white flex items-center justify-center font-bold text-xs hover:scale-110 transition shadow-md ${avatarClass(n)} ${editing.avatar === n ? 'ring-4 ring-violet-500 scale-110' : ''}`}>{n}</button>
@@ -162,10 +164,10 @@ export default function Admin() {
             </div>
           </Field>
           <div className="bg-gradient-to-br from-violet-50 to-fuchsia-50 rounded-2xl p-4 text-[11px] font-medium text-ink-600 leading-relaxed">
-            <strong className="text-violet-700">Permisos:</strong><br />
-            <strong>Directivo:</strong> Control total.<br />
-            <strong>Gerente:</strong> Crea/edita proyectos, ve KPIs.<br />
-            <strong>Miembro:</strong> Solo proyectos propios.
+            <strong className="text-violet-700">{t('admin.perms.title')}</strong><br />
+            <strong>{t('admin.perms.adminLine')}</strong> {t('admin.perms.adminDesc')}<br />
+            <strong>{t('admin.perms.gerenteLine')}</strong> {t('admin.perms.gerenteDesc')}<br />
+            <strong>{t('admin.perms.miembroLine')}</strong> {t('admin.perms.miembroDesc')}
           </div>
         </Modal>
       )}
