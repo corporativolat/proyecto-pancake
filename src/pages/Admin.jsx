@@ -63,15 +63,15 @@ export default function Admin() {
   };
 
   return (
-    <section ref={ref} className="flex-1 p-10 overflow-y-auto scroller">
+    <section ref={ref} className="flex-1 p-4 md:p-10 overflow-y-auto scroller">
       <div className="max-w-6xl mx-auto">
-        <header className="mb-10 flex justify-between items-end">
+        <header className="mb-6 md:mb-10 flex flex-col md:flex-row md:justify-between md:items-end gap-3">
           <div>
             <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">Configuración</p>
-            <h2 className="text-4xl font-black text-ink-900 tracking-tight">Administración</h2>
-            <p className="text-ink-500 font-medium mt-1">Usuarios, permisos y categorías.</p>
+            <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">Administración</h2>
+            <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">Usuarios, permisos y categorías.</p>
           </div>
-          <button onClick={() => navigate('/admin/reports')} className="btn-soft">
+          <button onClick={() => navigate('/admin/reports')} className="btn-soft self-start md:self-auto">
             <Bug className="w-3.5 h-3.5" /> Reportes de error
           </button>
         </header>

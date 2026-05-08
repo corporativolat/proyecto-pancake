@@ -81,11 +81,11 @@ export default function Settings() {
   };
 
   return (
-    <section ref={sectionRef} className="flex-1 p-10 overflow-y-auto scroller">
+    <section ref={sectionRef} className="flex-1 p-4 md:p-10 overflow-y-auto scroller">
       <div className="max-w-3xl mx-auto">
-        <header className="mb-10">
+        <header className="mb-6 md:mb-10">
           <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">{t('settings.section')}</p>
-          <h2 className="text-4xl font-black text-ink-900 tracking-tight">{t('settings.title')}</h2>
+          <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">{t('settings.title')}</h2>
           <p className="text-ink-500 font-medium mt-1">{t('settings.subtitle')}</p>
         </header>
 

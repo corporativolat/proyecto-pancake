@@ -5,7 +5,7 @@ import gsap from 'gsap';
 import { Draggable } from 'gsap/Draggable';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
-import { calcPhaseProgress, calcProjectProgress, STATUSES } from '../lib/utils';
+import { calcPhaseProgress, calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP } from '../lib/utils';
 import Avatar from '../components/Avatar.jsx';
 import Comments from '../components/Comments.jsx';
 import { animateBars, confetti, reduced } from '../lib/motion';
@@ -30,6 +30,7 @@ export default function ProjectDetail() {
   const [editingTask, setEditingTask] = useState(null);
   const [showFull, setShowFull] = useState(false);
   const [showExec, setShowExec] = useState(false);
+  const [mobileTab, setMobileTab] = useState('roadmap'); // 'roadmap' | 'gantt'
   const headerRef = useRef(null);
   const phasesScrollRef = useRef(null);
 
@@ -90,76 +91,116 @@ export default function ProjectDetail() {
 
   return (
     <section className="flex-1 flex flex-col overflow-hidden bg-white relative">
-      <div ref={headerRef} className="pj-header px-10 py-6 border-b bg-white z-20 flex-shrink-0">
-        <div className="flex justify-between items-start mb-5">
-          <div className="flex-1 max-w-4xl">
+      <div ref={headerRef} className="pj-header px-4 py-4 md:px-10 md:py-6 border-b bg-white z-20 flex-shrink-0">
+        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-3 mb-4 md:mb-5">
+          <div className="flex-1 max-w-4xl min-w-0">
             <input
               type="text" value={project.title} disabled={!editable}
               onChange={e => debouncedUpdate('title', e.target.value)}
-              className="pj-title text-3xl font-black border-none focus:ring-0 w-full bg-transparent p-0 text-ink-900 tracking-tight outline-none"
+              title={PROJECT_FIELD_HELP.title}
+              className="pj-title text-2xl md:text-3xl font-black border-none focus:ring-0 w-full bg-transparent p-0 text-ink-900 tracking-tight outline-none"
               placeholder="Nombre del Proyecto"
             />
             <div className="flex items-center gap-4 mt-2 flex-wrap">
               <input
                 type="text" value={project.company || ''} disabled={!editable}
                 onChange={e => debouncedUpdate('company', e.target.value)}
+                title={PROJECT_FIELD_HELP.company}
                 className="text-sm font-bold border-none focus:ring-0 text-ink-400 bg-transparent w-auto outline-none"
                 placeholder="Empresa o Cliente"
               />
               <span className="text-ink-200">·</span>
               <select value={project.category_id || ''} disabled={!editable}
                 onChange={e => debouncedUpdate('category_id', e.target.value)}
+                title={(() => {
+                  const c = categories.find(x => x.id === project.category_id);
+                  return c ? `Tipo: ${c.name} — ${PROJECT_CATEGORY_HELP[c.name] || PROJECT_FIELD_HELP.category_id}` : PROJECT_FIELD_HELP.category_id;
+                })()}
                 className="text-[10px] font-bold uppercase tracking-widest bg-violet-50 text-violet-700 px-3 py-1 rounded-full border-none focus:ring-2 focus:ring-violet-500 outline-none">
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <span className="text-ink-200">·</span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" title={PROJECT_FIELD_HELP.start_date}>
                 <Calendar className="w-3 h-3 text-ink-400" />
                 <input type="date" value={project.start_date || ''} disabled={!editable}
                   onChange={e => debouncedUpdate('start_date', e.target.value)}
                   className="text-[10px] font-bold border-none bg-ink-100 rounded px-2 py-1 text-ink-600 focus:ring-2 focus:ring-violet-500 outline-none" />
               </div>
             </div>
+            {(() => {
+              const c = categories.find(x => x.id === project.category_id);
+              const help = c ? PROJECT_CATEGORY_HELP[c.name] : null;
+              if (!c || !help) return null;
+              return (
+                <p className="mt-2 text-[11px] text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-2.5 py-1.5 leading-snug inline-block">
+                  <span className="font-bold">{c.name}:</span> {help}
+                </p>
+              );
+            })()}
           </div>
-          <div className="flex gap-2 items-start">
-            <div className="flex flex-col items-end mr-2">
+          <div className="flex gap-2 items-start flex-wrap">
+            <div className="flex flex-col items-start lg:items-end mr-2 flex-1 lg:flex-initial">
               <span className="text-[10px] font-bold text-ink-400 uppercase tracking-widest">Avance</span>
-              <div className="flex items-center gap-2">
-                <div className="w-32 bg-ink-100 h-2 rounded-full overflow-hidden">
+              <div className="flex items-center gap-2 w-full lg:w-auto">
+                <div className="flex-1 lg:w-32 bg-ink-100 h-2 rounded-full overflow-hidden">
                   <div className="progress-fill h-full transition-all duration-700" style={{ width: projProg + '%' }} />
                 </div>
                 <span className="text-sm font-black text-violet-600 tabular">{projProg}%</span>
               </div>
             </div>
-            <button onClick={() => setShowFull(true)} className="btn-soft"><Maximize2 className="w-3.5 h-3.5" /> Ampliar</button>
-            <button onClick={() => setShowExec(true)} className="btn-soft"><FileText className="w-3.5 h-3.5" /> Reporte</button>
+            <button onClick={() => setShowFull(true)} className="btn-soft"><Maximize2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Ampliar</span></button>
+            <button onClick={() => setShowExec(true)} className="btn-soft"><FileText className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Reporte</span></button>
             {can('deleteProject') && <button onClick={handleDelete} className="btn-danger"><Trash2 className="w-3.5 h-3.5" /></button>}
-            <button onClick={() => navigate('/projects')} className="btn-dark"><X className="w-3.5 h-3.5" /> Volver</button>
+            <button onClick={() => navigate('/projects')} className="btn-dark"><X className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Volver</span></button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-5 pj-extra">
           <div className="md:col-span-2">
-            <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-1 block">Objetivo Estratégico</label>
-            <textarea value={project.goal || ''} disabled={!editable} onChange={e => debouncedUpdate('goal', e.target.value)} className="input-light h-20 resize-none" placeholder="¿Cuál es la meta final?" />
+            <DetailLabel label="Objetivo" help={PROJECT_FIELD_HELP.goal} />
+            <textarea value={project.goal || ''} disabled={!editable} onChange={e => debouncedUpdate('goal', e.target.value)} className="input-light h-20 resize-none" placeholder="Propósito y alcance del proyecto..." />
           </div>
           <div className="space-y-3">
             <div>
-              <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-1 block">Líder</label>
+              <DetailLabel label="Responsable (Líder interno)" help={PROJECT_FIELD_HELP.owner_id} />
               <select value={project.owner_id || ''} disabled={!editable} onChange={e => debouncedUpdate('owner_id', e.target.value)} className="input-light">
                 {profiles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-1 block">Estado</label>
+              <DetailLabel label="Estado" help={PROJECT_FIELD_HELP.status} />
               <select value={project.status} disabled={!editable} onChange={e => debouncedUpdate('status', e.target.value)} className="input-light">
                 {STATUSES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
               </select>
             </div>
           </div>
           <div>
-            <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-1 block">Resumen Ejecutivo</label>
-            <textarea value={project.observation || ''} disabled={!editable} onChange={e => debouncedUpdate('observation', e.target.value)} className="w-full bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 text-[11px] font-medium italic text-amber-900 outline-none h-24 resize-none focus:ring-2 focus:ring-amber-500" placeholder="Resumen para reporte..." />
+            <DetailLabel label="Observaciones" help={PROJECT_FIELD_HELP.observation} />
+            <textarea value={project.observation || ''} disabled={!editable} onChange={e => debouncedUpdate('observation', e.target.value)} className="w-full bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 text-[11px] font-medium italic text-amber-900 outline-none h-24 resize-none focus:ring-2 focus:ring-amber-500" placeholder="Estado, riesgos, logros..." />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-5 pj-extra mt-4">
+          <div>
+            <DetailLabel label="Dependencia" help={PROJECT_FIELD_HELP.client_lead} />
+            <input type="text" value={project.client_lead || ''} disabled={!editable} onChange={e => debouncedUpdate('client_lead', e.target.value)} placeholder="Responsable de cara al cliente" className="input-light" />
+          </div>
+          <div>
+            <DetailLabel label="Fin proyectada" help={PROJECT_FIELD_HELP.projected_end_date} />
+            <input type="date" value={project.projected_end_date || ''} disabled={!editable} onChange={e => debouncedUpdate('projected_end_date', e.target.value || null)} className="input-light" />
+          </div>
+          <div>
+            <DetailLabel label="Fecha de entrega" help={PROJECT_FIELD_HELP.delivery_date} />
+            <input type="date" value={project.delivery_date || ''} disabled={!editable} onChange={e => debouncedUpdate('delivery_date', e.target.value || null)} className="input-light" />
+          </div>
+          <div>
+            <DetailLabel label="Contrato" help={PROJECT_FIELD_HELP.contract_url} />
+            <div className="flex gap-2">
+              <input type="text" value={project.contract_url || ''} disabled={!editable} onChange={e => debouncedUpdate('contract_url', e.target.value)} placeholder="URL del contrato firmado" className="input-light flex-1" />
+              {project.contract_url && /^https?:\/\//i.test(project.contract_url) && (
+                <a href={project.contract_url} target="_blank" rel="noreferrer" className="btn-soft text-[10px]" title="Abrir contrato">↗</a>
+              )}
+            </div>
           </div>
         </div>
 
@@ -182,15 +223,31 @@ export default function ProjectDetail() {
         </div>
       </div>
 
+      {/* Tabs solo en móvil. >=md ambos paneles se muestran lado a lado. */}
+      <div className="md:hidden flex border-b bg-white flex-shrink-0 sticky top-0 z-10">
+        <button
+          onClick={() => setMobileTab('roadmap')}
+          className={`flex-1 py-3 text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition ${mobileTab === 'roadmap' ? 'text-violet-700 border-b-2 border-violet-600 bg-violet-50/50' : 'text-ink-400'}`}
+        >
+          <Map className="w-3.5 h-3.5" /> Hoja de Ruta
+        </button>
+        <button
+          onClick={() => setMobileTab('gantt')}
+          className={`flex-1 py-3 text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition ${mobileTab === 'gantt' ? 'text-violet-700 border-b-2 border-violet-600 bg-violet-50/50' : 'text-ink-400'}`}
+        >
+          <Calendar className="w-3.5 h-3.5" /> Cronograma
+        </button>
+      </div>
+
       <div className="flex-1 overflow-hidden flex">
-        <div className="w-[600px] border-r flex flex-col bg-ink-50/40">
+        <div className={`${mobileTab === 'roadmap' ? 'flex' : 'hidden'} md:flex w-full md:w-[600px] md:border-r flex-col bg-ink-50/40`}>
           <div className="p-4 bg-white border-b flex justify-between items-center">
             <span className="font-black text-[10px] text-ink-400 uppercase tracking-widest flex items-center gap-2">
               <Map className="w-3 h-3" /> Hoja de Ruta
             </span>
             {editable && <button onClick={handleNewPhase} className="btn-primary-sm"><Plus className="w-3 h-3" /> FASE</button>}
           </div>
-          <div ref={phasesScrollRef} className="flex-1 overflow-y-auto p-5 space-y-5 scroller pb-32">
+          <div ref={phasesScrollRef} className="flex-1 overflow-y-auto p-4 md:p-5 space-y-4 md:space-y-5 scroller pb-32">
             {project.phases?.map((ph, pIdx) => (
               <PhaseCard key={ph.id} phase={ph} pIdx={pIdx} total={project.phases.length} project={project} editable={editable} profiles={profiles} onChange={refreshProjects} onEditTask={(t) => setEditingTask({ ...t, phaseId: ph.id })} onMove={async (dir) => {
                 const arr = [...project.phases];
@@ -206,7 +263,7 @@ export default function ProjectDetail() {
             <Comments projectId={project.id} />
           </div>
         </div>
-        <div className="flex-1 bg-white overflow-x-auto scroller relative">
+        <div className={`${mobileTab === 'gantt' ? 'block' : 'hidden'} md:block flex-1 bg-white overflow-x-auto scroller relative`}>
           <GanttCanvas project={project} editable={editable} onChange={refreshProjects} onEditTask={(t, phaseId) => setEditingTask({ ...t, phaseId })} />
         </div>
       </div>
@@ -334,6 +391,15 @@ function PhaseCard({ phase, pIdx, total, project, editable, profiles, onChange, 
         </span>
       </div>
     </div>
+  );
+}
+
+function DetailLabel({ label, help }) {
+  return (
+    <>
+      <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-1 block">{label}</label>
+      {help && <p className="text-[10px] text-ink-400 italic mb-1.5 leading-snug">{help}</p>}
+    </>
   );
 }
 

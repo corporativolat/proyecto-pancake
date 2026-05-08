@@ -52,11 +52,11 @@ export default function Team() {
   };
 
   return (
-    <section ref={ref} className="flex-1 p-10 overflow-y-auto scroller">
+    <section ref={ref} className="flex-1 p-4 md:p-10 overflow-y-auto scroller">
       <div className="max-w-[1400px] mx-auto">
-        <header className="mb-10">
+        <header className="mb-6 md:mb-10">
           <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">Vista Productiva</p>
-          <h2 className="text-4xl font-black text-ink-900 tracking-tight">Mi Espacio</h2>
+          <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">Mi Espacio</h2>
           <p className="text-ink-500 font-medium mt-1">Mis proyectos, tareas y rendimiento.</p>
         </header>
 

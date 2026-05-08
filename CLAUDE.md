@@ -29,6 +29,7 @@ Postgres vive en Supabase y todo el schema custom es `pro_gestion` (no `public`)
 3. `supabase-migration-7.sql` — **parche de seguridad**. `handle_new_user` ya no acepta `role` desde `raw_user_meta_data` (cierra privilege escalation), bucket `attachments` exige primer folder = uid, `revoke ... from anon` (RLS solo para authenticated), `activity_write` exige `profile_id = auth.uid()`, `comments_write_self` valida acceso al `project_id`.
 4. `supabase-migration-8.sql` — feature reportes de error: tabla `pro_gestion.error_reports` + RLS (admin/gerente leen todo, autor lee los suyos, solo admin update/delete) + realtime publication.
 5. `supabase-migration-9.sql` — performance + integridad: índices en `tasks.assignee_id`, `projects.category_id`, `project_members.profile_id`; `updated_at` + trigger en `tasks` y `phases`; RPC `pro_gestion.reorder_phases(items jsonb)` transaccional para reordenar fases.
+6. `supabase-migration-10.sql` — campos oficiales del proyecto: añade `client_lead`, `projected_end_date`, `delivery_date`, `contract_url` a `projects`. Reemplaza el seed inicial de `categories` (Estrategia/Operaciones/Tecnología/Comercial) por los 7 tipos oficiales: Innovación y Desarrollo, Alianza comercial, Parametrizaciones, Eventos, Curso | Lanzamientos, Integraciones, Productos específicos. Los proyectos que apuntaban a categorías eliminadas quedan con `category_id = NULL` (gracias a `ON DELETE SET NULL`).
 
 El cliente apunta al schema custom mediante `db: { schema: 'pro_gestion' }` en `createClient`. Cualquier tabla nueva debe crearse dentro de `pro_gestion` y exponerse en `pgrst.db_schemas`.
 
@@ -56,9 +57,20 @@ SPA React 18 + Vite. Backend = Supabase (Auth + Postgres + Realtime). No hay ser
 - `src/pages/*` — páginas top-level (Dashboard, Team, Projects, ProjectDetail, Admin, AdminReports, Settings, Login). Dashboard, ProjectDetail, Admin, AdminReports, Settings se cargan con `lazy()` + `<Suspense>` para code-split.
 - `src/components/*` — UI reutilizable (Layout, Modal, Toast, CommandPalette, Shortcuts, Comments, ActivityFeed, ErrorBoundary, ReportButton…).
 
+### Responsive / móvil
+
+Breakpoint clave: `md` (768px). Por debajo:
+- `Layout.jsx` muestra una **topbar móvil** con hamburguesa, logo, búsqueda (Cmd+K) y toggle de tema. La sidebar (`w-72 sidebar-bg`) cambia de `md:relative` a `fixed` y se traslada con `-translate-x-full ↔ translate-x-0` controlado por estado `mobileOpen`. Backdrop semi-transparente cierra el drawer; navegar también lo cierra (effect en `loc.pathname`).
+- Páginas (`Projects`, `ProjectDetail`, `Dashboard`, `Team`, `Admin`, `AdminReports`, `Settings`) usan padding responsive `p-4 md:p-10` y headers `flex-col md:flex-row`.
+- En `Projects.jsx` los chips de categoría tienen scroll horizontal en móvil (`overflow-x-auto -mx-4 px-4`).
+- En `ProjectDetail.jsx` el split Hoja de Ruta / Gantt se vuelve **tabs** en móvil (estado `mobileTab` ∈ `'roadmap' | 'gantt'`); en `≥md` ambos paneles se muestran lado a lado como antes.
+
 ### Modelo de datos (`pro_gestion`)
 
-`profiles (id ref auth.users, role, avatar 1-5) → projects (owner_id, category_id) → phases (position) → tasks (assignee_id, position, start_week, start_day, duration)`. Tablas auxiliares: `project_members` (M:N), `milestones`, `categories`. Constraints clave: `start_week 1-8`, `duration_weeks 1-8`, `tasks.duration 1-56`, `start_day 1-7`.
+`profiles (id ref auth.users, role, avatar 1-5) → projects (owner_id, category_id, client_lead, start_date, projected_end_date, delivery_date, contract_url, status, goal, observation) → phases (position) → tasks (assignee_id, position, start_week, start_day, duration)`. Tablas auxiliares: `project_members` (M:N), `milestones`, `categories`. Constraints clave: `start_week 1-8`, `duration_weeks 1-8`, `tasks.duration 1-56`, `start_day 1-7`.
+
+**Campos oficiales de proyecto** (definidos por negocio, ver `src/lib/utils.js::PROJECT_FIELD_HELP` y `PROJECT_CATEGORY_HELP`):
+`title` (Proyectos), `category_id` (Tipo), `client_lead` (Dependencia · responsable cara cliente), `status` (Estado), `goal` (Objetivo), `owner_id` (Responsable interno), `start_date` (Fecha inicio), `projected_end_date` (Fin proyectada), `delivery_date` (Fecha de entrega), `contract_url` (Contrato), `observation` (Observaciones). Las descripciones de cada campo y de cada tipo de categoría se renderizan inline en el modal de creación (`Projects.jsx::NewProjectModal`) y en el header del detalle (`ProjectDetail.jsx`).
 
 Trigger `pro_gestion.handle_new_user` corre en `auth.users` AFTER INSERT y crea la fila en `profiles`. **Primer usuario registrado en la base → rol `admin` automático**; los siguientes → `miembro`. Ese trigger es la única forma soportada de crear perfiles desde signup.
 

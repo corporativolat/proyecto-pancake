@@ -56,20 +56,20 @@ export default function AdminReports() {
   };
 
   return (
-    <section className="flex-1 p-10 overflow-y-auto scroller">
+    <section className="flex-1 p-4 md:p-10 overflow-y-auto scroller">
       <div className="max-w-6xl mx-auto">
         <button onClick={() => navigate('/admin')} className="text-[11px] font-bold text-ink-500 hover:text-violet-600 flex items-center gap-1 mb-3">
           <ChevronLeft className="w-3 h-3" /> Volver a Administración
         </button>
-        <header className="mb-8 flex justify-between items-end">
+        <header className="mb-6 md:mb-8 flex flex-col md:flex-row md:justify-between md:items-end gap-3">
           <div>
             <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">Soporte</p>
-            <h2 className="text-4xl font-black text-ink-900 tracking-tight flex items-center gap-3">
-              <Bug className="w-9 h-9 text-red-500" /> Reportes de error
+            <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight flex items-center gap-3">
+              <Bug className="w-7 h-7 md:w-9 md:h-9 text-red-500" /> Reportes de error
             </h2>
-            <p className="text-ink-500 font-medium mt-1">Issues enviados por usuarios desde el botón flotante.</p>
+            <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">Issues enviados por usuarios desde el botón flotante.</p>
           </div>
-          <div className="flex items-center gap-2 bg-white rounded-2xl p-1 border border-ink-100">
+          <div className="flex items-center gap-2 bg-white rounded-2xl p-1 border border-ink-100 self-start md:self-auto overflow-x-auto">
             <Filter className="w-3.5 h-3.5 text-ink-400 ml-2" />
             <button onClick={() => setScope('all')} className={`text-[11px] font-bold px-3 py-1.5 rounded-xl ${scope === 'all' ? 'bg-violet-100 text-violet-700' : 'text-ink-500'}`}>Todos</button>
             <button onClick={() => setScope('open')} className={`text-[11px] font-bold px-3 py-1.5 rounded-xl ${scope === 'open' ? 'bg-violet-100 text-violet-700' : 'text-ink-500'}`}>Abiertos</button>

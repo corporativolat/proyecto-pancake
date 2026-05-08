@@ -36,3 +36,31 @@ export const STATUSES = [
   { name: 'Validación de viabilidad', color: '#ec4899' },
   { name: 'Finalizado', color: '#10b981' }
 ];
+
+// Descripciones oficiales de cada columna del proyecto.
+// Se muestran como ayuda inline en el modal de creación y en el detalle.
+export const PROJECT_FIELD_HELP = {
+  title: 'Título del proyecto.',
+  company: 'Empresa o cliente al que pertenece la iniciativa.',
+  category_id: 'Categoría del proyecto en ejecución.',
+  client_lead: 'Responsable del proyecto de cara al cliente.',
+  status: 'Momento del proceso en que se encuentra el proyecto.',
+  goal: 'Propósito del proyecto y su alcance.',
+  owner_id: 'Persona que lidera el proyecto internamente.',
+  start_date: 'Fecha en que inicia el proyecto.',
+  projected_end_date: 'Fecha proyectada para finalizar y entregar el proyecto.',
+  delivery_date: 'Fecha real en que se entrega el proyecto.',
+  contract_url: 'Enlace que lleva a la propuesta comercial firmada por el cliente.',
+  observation: 'Actualizaciones objetivas sobre el estado del proyecto, riesgos, limitaciones o logros alcanzados.'
+};
+
+// Significado oficial de cada tipo de proyecto.
+export const PROJECT_CATEGORY_HELP = {
+  'Innovación y Desarrollo': 'Desarrollo de nuevas herramientas | Actualización de funcionalidades.',
+  'Alianza comercial':       'Desarrollo de parametrizaciones con alianza comercial.',
+  'Parametrizaciones':       'Desarrollo de parametrizaciones con clientes.',
+  'Eventos':                 'Desarrollo de parametrizaciones para eventos internos o externos.',
+  'Curso | Lanzamientos':    'Desarrollo de parametrizaciones para lanzamientos o cursos internos.',
+  'Integraciones':           'Planificación, ejecución y validación de integraciones con plataformas externas.',
+  'Productos específicos':   'Desarrollo de productos nuevos para venta comercial.'
+};

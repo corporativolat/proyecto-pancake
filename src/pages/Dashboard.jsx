@@ -68,9 +68,9 @@ export default function Dashboard() {
 
   if (loading && !projects.length) {
     return (
-      <section className="flex-1 p-10 overflow-y-auto scroller">
+      <section className="flex-1 p-4 md:p-10 overflow-y-auto scroller">
         <div className="max-w-[1500px] mx-auto">
-          <div className="mb-10 space-y-3"><Skeleton w={140} h={12} /><Skeleton w={320} h={42} /><Skeleton w={420} h={18} /></div>
+          <div className="mb-6 md:mb-10 space-y-3"><Skeleton w={140} h={12} /><Skeleton w={320} h={42} /><Skeleton w={420} h={18} /></div>
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 mb-10">
             {[1,2,3,4].map(i => <div key={i} className="kpi-card"><Skeleton w={80} h={12} className="mb-3" /><Skeleton w={120} h={42} /></div>)}
           </div>
@@ -81,15 +81,15 @@ export default function Dashboard() {
   }
 
   return (
-    <section ref={ref} className="flex-1 p-10 overflow-y-auto scroller">
+    <section ref={ref} className="flex-1 p-4 md:p-10 overflow-y-auto scroller">
       <div className="max-w-[1500px] mx-auto">
-        <header className="mb-10 flex justify-between items-end">
+        <header className="mb-6 md:mb-10 flex flex-col md:flex-row md:justify-between md:items-end gap-3">
           <div>
             <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">Vista Gerencial</p>
-            <h2 className="text-4xl font-black text-ink-900 tracking-tight">Panel de Portafolio</h2>
-            <p className="text-ink-500 font-medium mt-1">Indicadores estratégicos y salud global.</p>
+            <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">Panel de Portafolio</h2>
+            <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">Indicadores estratégicos y salud global.</p>
           </div>
-          <div className="text-right">
+          <div className="md:text-right">
             <div className="text-[10px] font-bold text-ink-400 uppercase tracking-widest">Última actualización</div>
             <div className="text-sm font-bold text-ink-700">{new Date().toLocaleDateString('es', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
           </div>

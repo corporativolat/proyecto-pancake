@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FolderKanban, ShieldCheck, Plus, LogOut, Settings as SettingsIcon, Search, Moon, Sun } from 'lucide-react';
+import { LayoutDashboard, Users, FolderKanban, ShieldCheck, Plus, LogOut, Settings as SettingsIcon, Search, Moon, Sun, Menu } from 'lucide-react';
 import gsap from 'gsap';
 import { useAuth } from '../lib/auth.jsx';
 import { useStore } from '../lib/store';
@@ -8,63 +8,74 @@ import { useT } from '../lib/i18n.jsx';
 import { useTheme } from '../lib/theme.jsx';
 import { reduced, staggerIn } from '../lib/motion';
 import { useToast } from '../lib/toast';
-import { createProject } from '../lib/data';
-import { logActivity } from '../lib/comments';
-import { logger } from '../lib/logger';
 import Avatar from './Avatar.jsx';
 
 export default function Layout({ children, onOpenCmd, onOpenShort }) {
   const { profile, signOut, can } = useAuth();
   const projects = useStore(s => s.projects);
-  const refreshProjects = useStore(s => s.refreshProjects);
   const loc = useLocation();
   const navigate = useNavigate();
   const showToast = useToast(s => s.show);
   const { t } = useT();
   const { theme, toggle: toggleTheme } = useTheme();
   const mainRef = useRef(null);
+  const navRef = useRef(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const recents = [...projects].slice(-7).reverse();
 
   useEffect(() => {
     if (!reduced && mainRef.current) {
       gsap.fromTo(mainRef.current, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out' });
       staggerIn(mainRef.current);
     }
+    setMobileOpen(false); // cerrar drawer al navegar
   }, [loc.pathname]);
 
-  const recents = [...projects].slice(-7).reverse();
+  // Stagger inicial de items del sidebar (una vez al montar).
+  useEffect(() => {
+    if (reduced || !navRef.current) return;
+    const items = navRef.current.querySelectorAll('[data-nav-item]');
+    if (!items.length) return;
+    gsap.fromTo(items,
+      { x: -16, opacity: 0 },
+      { x: 0, opacity: 1, duration: 0.4, ease: 'power3.out', stagger: 0.04 }
+    );
+  }, []);
 
-  const handleNew = async () => {
+  // Re-stagger cuando cambia la lista de recents.
+  useEffect(() => {
+    if (reduced || !navRef.current) return;
+    const items = navRef.current.querySelectorAll('[data-recent-item]');
+    if (!items.length) return;
+    gsap.fromTo(items,
+      { x: -10, opacity: 0 },
+      { x: 0, opacity: 1, duration: 0.35, ease: 'power3.out', stagger: 0.03 }
+    );
+  }, [recents.length]);
+
+  // Abre el form de creación en /projects (con todos los campos oficiales).
+  // No crea proyectos vacíos directamente: respeta el draft del autosave.
+  const handleNew = () => {
     if (!can('createProject')) {
       showToast('Sin permiso para crear proyectos', 'error');
       return;
     }
-    try {
-      const cats = useStore.getState().categories;
-      const cat = cats[0];
-      if (!cat) { showToast('Crea una categoría en Administración primero', 'error'); return; }
-      const newP = await createProject({
-        title: 'Nueva Iniciativa',
-        company: '',
-        category_id: cat.id,
-        owner_id: profile.id,
-        start_date: new Date().toISOString().split('T')[0],
-        status: 'No iniciado',
-        goal: '',
-        observation: ''
-      });
-      await refreshProjects();
-      logActivity(profile.id, newP.id, 'project_create', newP.title);
-      showToast(t('pj.toast.created'));
-      navigate(`/projects/${newP.id}`);
-    } catch (e) {
-      logger.error('createProject', e);
-      showToast('Error al crear: ' + (e.message || 'desconocido'), 'error');
-    }
+    navigate('/projects', { state: { openNew: true } });
   };
 
   return (
     <div className="flex h-screen overflow-hidden bg-ink-50">
-      <aside className="w-72 sidebar-bg flex flex-col z-40 relative">
+      {/* Backdrop solo móvil cuando el drawer está abierto */}
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Cerrar menú"
+          onClick={() => setMobileOpen(false)}
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden"
+        />
+      )}
+      <aside className={`w-72 sidebar-bg flex flex-col z-40 fixed md:relative inset-y-0 left-0 transition-transform duration-300 ease-out ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="p-7 border-b border-white/5 relative">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-violet-500/40">
@@ -82,20 +93,20 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-4 space-y-1 scroller">
+        <nav ref={navRef} className="flex-1 overflow-y-auto p-4 space-y-1 scroller">
           {can('viewKPIs') && <NavItem to="/dashboard" icon={<LayoutDashboard className="w-4 h-4" />}>{t('nav.dashboard')}</NavItem>}
           <NavItem to="/team" icon={<Users className="w-4 h-4" />}>{t('nav.team')}</NavItem>
           <NavItem to="/projects" icon={<FolderKanban className="w-4 h-4" />}>{t('nav.projects')}</NavItem>
           {can('manageUsers') && <NavItem to="/admin" icon={<ShieldCheck className="w-4 h-4" />}>{t('nav.admin')}</NavItem>}
           <NavItem to="/settings" icon={<SettingsIcon className="w-4 h-4" />}>{t('nav.settings')}</NavItem>
 
-          <div className="pt-6 pb-2 px-4 flex items-center gap-2">
+          <div data-nav-item className="pt-6 pb-2 px-4 flex items-center gap-2">
             <span className="flex-1 text-[10px] font-black text-white/30 uppercase tracking-widest">{t('nav.recents')}</span>
             <span className="bg-white/5 text-white/50 px-2 py-0.5 rounded-md text-[9px] tabular">{projects.length}</span>
           </div>
           <div className="space-y-0.5">
             {recents.map(p => (
-              <NavLink key={p.id} to={`/projects/${p.id}`} className={({ isActive }) => `sidebar-pj ${isActive ? 'active' : ''}`}>
+              <NavLink key={p.id} data-recent-item to={`/projects/${p.id}`} className={({ isActive }) => `sidebar-pj ${isActive ? 'active' : ''}`}>
                 <FolderKanban className="w-3 h-3" />
                 <span className="truncate flex-1">{p.title}</span>
               </NavLink>
@@ -103,7 +114,7 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
           </div>
 
           {can('createProject') && (
-            <button onClick={handleNew} className="w-full mt-6 btn-primary-sm justify-center">
+            <button data-nav-item onClick={handleNew} className="w-full mt-6 btn-primary-sm justify-center">
               <Plus className="w-4 h-4" /> {t('nav.newProject')}
             </button>
           )}
@@ -129,7 +140,30 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
         </div>
       </aside>
 
-      <main ref={mainRef} className="flex-1 flex flex-col overflow-hidden bg-ink-50">
+      <main ref={mainRef} className="flex-1 flex flex-col overflow-hidden bg-ink-50 w-full">
+        {/* Topbar móvil con hamburguesa. Oculto >= md */}
+        <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b bg-white/95 dark:bg-ink-900/95 backdrop-blur sticky top-0 z-20 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Abrir menú"
+            className="p-2 rounded-lg hover:bg-ink-100 transition"
+          >
+            <Menu className="w-5 h-5 text-ink-700" />
+          </button>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center shadow-md shadow-violet-500/30 flex-shrink-0">
+              <LayoutDashboard className="w-3.5 h-3.5 text-white" />
+            </div>
+            <span className="font-black text-sm tracking-tight text-ink-900 truncate">PRO-GESTIÓN</span>
+          </div>
+          <button onClick={onOpenCmd} aria-label="Buscar" className="p-2 rounded-lg hover:bg-ink-100 transition">
+            <Search className="w-4 h-4 text-ink-600" />
+          </button>
+          <button onClick={toggleTheme} aria-label="Tema" className="p-2 rounded-lg hover:bg-ink-100 transition">
+            {theme === 'dark' ? <Sun className="w-4 h-4 text-ink-600" /> : <Moon className="w-4 h-4 text-ink-600" />}
+          </button>
+        </div>
         {children}
       </main>
     </div>
@@ -138,7 +172,7 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
 
 function NavItem({ to, icon, children }) {
   return (
-    <NavLink to={to} className={({ isActive }) => `nav-btn ${isActive ? 'active' : ''}`}>
+    <NavLink to={to} data-nav-item className={({ isActive }) => `nav-btn ${isActive ? 'active' : ''}`}>
       {icon}
       <span>{children}</span>
     </NavLink>
