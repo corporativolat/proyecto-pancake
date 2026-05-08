@@ -1,0 +1,13 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Predecesor vanilla JS, no usado por el SPA
+legacy/
+
+# Backups locales
+*.tar.gz
+*.original.md
