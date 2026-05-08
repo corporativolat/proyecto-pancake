@@ -84,12 +84,14 @@ drop trigger if exists trg_audit_comment on pro_gestion.comments;
 create trigger trg_audit_comment after insert on pro_gestion.comments
 for each row execute function pro_gestion.audit_comment();
 
--- REALTIME: agregar tablas a publication
-alter publication supabase_realtime add table pro_gestion.projects;
-alter publication supabase_realtime add table pro_gestion.phases;
-alter publication supabase_realtime add table pro_gestion.tasks;
-alter publication supabase_realtime add table pro_gestion.comments;
-alter publication supabase_realtime add table pro_gestion.activity;
-alter publication supabase_realtime add table pro_gestion.milestones;
+-- REALTIME: agregar tablas a publication (idempotente).
+-- alter publication ... add table NO soporta IF NOT EXISTS, por eso atrapamos
+-- duplicate_object para que reintentar la migración no falle.
+do $$ begin alter publication supabase_realtime add table pro_gestion.projects;   exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table pro_gestion.phases;     exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table pro_gestion.tasks;      exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table pro_gestion.comments;   exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table pro_gestion.activity;   exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table pro_gestion.milestones; exception when duplicate_object then null; end $$;
 
 notify pgrst, 'reload config';

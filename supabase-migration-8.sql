@@ -54,7 +54,7 @@ using (pro_gestion.is_admin());
 -- GRANTS solo authenticated (CN-003 ya revocó anon).
 grant select, insert, update, delete on pro_gestion.error_reports to authenticated;
 
--- Realtime opcional para que admin vea reportes en vivo.
-alter publication supabase_realtime add table pro_gestion.error_reports;
+-- Realtime opcional para que admin vea reportes en vivo (idempotente).
+do $$ begin alter publication supabase_realtime add table pro_gestion.error_reports; exception when duplicate_object then null; end $$;
 
 notify pgrst, 'reload config';
