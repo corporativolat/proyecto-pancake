@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -514,3 +512,287 @@ body.dark .status-dot { box-shadow: 0 0 0 3px rgba(0,0,0,0.4), 0 0 12px currentC
 }
 .kpi-card:hover::after { opacity: 0.08; }
 body.dark .kpi-card:hover::after { opacity: 0.18; }
+
+/* ================================================================
+   PROJECTS-MOCKUP SCOPE
+   Tabla resumen. Layout inspirado en el mockup, pero tipografía =
+   resto de la plataforma (Plus Jakarta + font-black para títulos,
+   JetBrains Mono solo en eyebrows y datos tabulares).
+   ================================================================ */
+.projects-mockup .pm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  margin-bottom: 24px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid #e4e4e7;
+  flex-wrap: wrap;
+}
+body.dark .projects-mockup .pm-header { border-bottom-color: #27272a; }
+
+.projects-mockup .pm-filters {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.projects-mockup .pm-input,
+.projects-mockup .pm-select {
+  background: #f4f4f5;
+  border: 1px solid transparent;
+  color: #18181b;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 140px;
+  outline: none;
+  transition: all .2s;
+}
+.projects-mockup .pm-input { flex: 1; min-width: 220px; }
+.projects-mockup .pm-input:hover,
+.projects-mockup .pm-select:hover { background: white; border-color: #e4e4e7; }
+.projects-mockup .pm-input:focus,
+.projects-mockup .pm-select:focus { background: white; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
+.projects-mockup .pm-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%2371717a' d='M0 0l5 6 5-6z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+body.dark .projects-mockup .pm-input,
+body.dark .projects-mockup .pm-select { background: #1c1c20; color: #fafafa; }
+body.dark .projects-mockup .pm-input:hover,
+body.dark .projects-mockup .pm-select:hover { background: #27272a; }
+body.dark .projects-mockup .pm-input:focus,
+body.dark .projects-mockup .pm-select:focus { background: #1c1c20; }
+
+.projects-mockup .pm-table-wrap {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--shadow-xs);
+}
+body.dark .projects-mockup .pm-table-wrap { background: #18181b; border-color: #27272a; }
+.projects-mockup .pm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: #18181b;
+}
+body.dark .projects-mockup .pm-table { color: #fafafa; }
+.projects-mockup .pm-table thead th {
+  background: #fafafa;
+  text-align: left;
+  padding: 12px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #71717a;
+  border-bottom: 1px solid #e4e4e7;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 700;
+}
+body.dark .projects-mockup .pm-table thead th { background: #1c1c20; color: #a1a1aa; border-bottom-color: #27272a; }
+.projects-mockup .pm-table thead th:hover { color: #18181b; }
+body.dark .projects-mockup .pm-table thead th:hover { color: #fafafa; }
+.projects-mockup .pm-table thead th.sorted { color: var(--accent); }
+.projects-mockup .pm-table tbody tr {
+  border-bottom: 1px solid #f4f4f5;
+  transition: background .15s;
+  cursor: pointer;
+}
+body.dark .projects-mockup .pm-table tbody tr { border-bottom-color: #27272a; }
+.projects-mockup .pm-table tbody tr:last-child { border-bottom: none; }
+.projects-mockup .pm-table tbody tr:hover { background: rgba(124,58,237,0.04); }
+body.dark .projects-mockup .pm-table tbody tr:hover { background: rgba(124,58,237,0.10); }
+.projects-mockup .pm-table td { padding: 14px; vertical-align: top; }
+.projects-mockup .pm-cell-title { font-weight: 700; color: #18181b; font-size: 13.5px; }
+body.dark .projects-mockup .pm-cell-title { color: #fafafa; }
+.projects-mockup .pm-cell-sub {
+  font-size: 11.5px;
+  color: #71717a;
+  margin-top: 2px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-weight: 500;
+}
+.projects-mockup .pm-cell-mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #52525b;
+  font-variant-numeric: tabular-nums;
+}
+body.dark .projects-mockup .pm-cell-mono { color: #a1a1aa; }
+.projects-mockup .pm-progress {
+  width: 100%;
+  height: 6px;
+  background: #f4f4f5;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+body.dark .projects-mockup .pm-progress { background: #27272a; }
+.projects-mockup .pm-progress-bar {
+  height: 100%;
+  background: var(--accent-grad);
+  background-size: 200% 100%;
+  animation: gradient-shift 4s ease infinite;
+  transition: width .3s;
+}
+.projects-mockup .pm-progress-bar.warn { background: #f59e0b; animation: none; }
+.projects-mockup .pm-progress-bar.low { background: #ef4444; animation: none; }
+.projects-mockup .pm-progress-bar.ok { background: #10b981; animation: none; }
+.projects-mockup .pm-progress-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #18181b;
+}
+body.dark .projects-mockup .pm-progress-label { color: #fafafa; }
+
+.projects-mockup .pm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.projects-mockup .pm-badge-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.projects-mockup .pm-badge.estado-no-iniciado     { background: rgba(161,161,170,0.12); color: #52525b; border-color: rgba(161,161,170,0.30); }
+.projects-mockup .pm-badge.estado-planeacion      { background: rgba(6,182,212,0.10); color: #0e7490; border-color: rgba(6,182,212,0.25); }
+.projects-mockup .pm-badge.estado-en-desarrollo   { background: rgba(124,58,237,0.10); color: #6d28d9; border-color: rgba(124,58,237,0.25); }
+.projects-mockup .pm-badge.estado-en-pausa,
+.projects-mockup .pm-badge.estado-pausa           { background: rgba(245,158,11,0.10); color: #b45309; border-color: rgba(245,158,11,0.25); }
+.projects-mockup .pm-badge.estado-pendiente-de-informacion,
+.projects-mockup .pm-badge.estado-pendiente       { background: rgba(168,85,247,0.10); color: #7e22ce; border-color: rgba(168,85,247,0.25); }
+.projects-mockup .pm-badge.estado-validacion-de-viabilidad,
+.projects-mockup .pm-badge.estado-validacion      { background: rgba(236,72,153,0.10); color: #be185d; border-color: rgba(236,72,153,0.25); }
+.projects-mockup .pm-badge.estado-finalizado      { background: rgba(16,185,129,0.10); color: #047857; border-color: rgba(16,185,129,0.25); }
+.projects-mockup .pm-badge.estado-entregado       { background: rgba(16,185,129,0.16); color: #047857; border-color: rgba(16,185,129,0.40); }
+.projects-mockup .pm-badge.estado-cancelado       { background: rgba(239,68,68,0.10); color: #b91c1c; border-color: rgba(239,68,68,0.25); }
+.projects-mockup .pm-badge.tipo { background: #f4f4f5; color: #3f3f46; border-color: #e4e4e7; }
+.projects-mockup .pm-badge.warn { background: rgba(239,68,68,0.10); color: #b91c1c; border-color: rgba(239,68,68,0.25); font-family: 'JetBrains Mono', monospace; }
+.projects-mockup .pm-badge.delay { background: rgba(239,68,68,0.10); color: #b91c1c; border-color: rgba(239,68,68,0.25); font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+body.dark .projects-mockup .pm-badge.estado-no-iniciado    { background: rgba(161,161,170,0.16); color: #d4d4d8; border-color: rgba(161,161,170,0.30); }
+body.dark .projects-mockup .pm-badge.estado-planeacion     { background: rgba(6,182,212,0.16); color: #67e8f9; }
+body.dark .projects-mockup .pm-badge.estado-en-desarrollo  { background: rgba(124,58,237,0.20); color: #c4b5fd; }
+body.dark .projects-mockup .pm-badge.estado-en-pausa,
+body.dark .projects-mockup .pm-badge.estado-pausa          { background: rgba(245,158,11,0.18); color: #fde68a; }
+body.dark .projects-mockup .pm-badge.estado-pendiente-de-informacion,
+body.dark .projects-mockup .pm-badge.estado-pendiente      { background: rgba(168,85,247,0.20); color: #d8b4fe; }
+body.dark .projects-mockup .pm-badge.estado-validacion-de-viabilidad,
+body.dark .projects-mockup .pm-badge.estado-validacion     { background: rgba(236,72,153,0.18); color: #f9a8d4; }
+body.dark .projects-mockup .pm-badge.estado-finalizado     { background: rgba(16,185,129,0.16); color: #6ee7b7; }
+body.dark .projects-mockup .pm-badge.estado-entregado      { background: rgba(16,185,129,0.24); color: #a7f3d0; }
+body.dark .projects-mockup .pm-badge.estado-cancelado      { background: rgba(239,68,68,0.16); color: #fca5a5; }
+body.dark .projects-mockup .pm-badge.tipo { background: #1c1c20; color: #d4d4d8; border-color: #27272a; }
+body.dark .projects-mockup .pm-badge.warn,
+body.dark .projects-mockup .pm-badge.delay { background: rgba(239,68,68,0.18); color: #fca5a5; border-color: rgba(239,68,68,0.30); }
+
+.projects-mockup .pm-muted { color: #a1a1aa; font-weight: 600; }
+.projects-mockup .pm-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #71717a;
+}
+.projects-mockup .pm-empty-title {
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  color: #3f3f46;
+  margin-bottom: 6px;
+}
+body.dark .projects-mockup .pm-empty-title { color: #e4e4e7; }
+.projects-mockup .pm-resp { display: flex; align-items: center; gap: 8px; }
+.projects-mockup .pm-resp-name { font-size: 13px; color: #27272a; font-weight: 600; }
+body.dark .projects-mockup .pm-resp-name { color: #e4e4e7; }
+.projects-mockup .pm-icon-btn {
+  background: transparent;
+  border: none;
+  color: #a1a1aa;
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .15s;
+}
+.projects-mockup .pm-icon-btn:hover { background: #f4f4f5; color: var(--accent); }
+body.dark .projects-mockup .pm-icon-btn:hover { background: #27272a; color: #c4b5fd; }
+.projects-mockup .pm-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.projects-mockup .pm-stat-card {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 18px;
+  padding: 18px 20px;
+  position: relative;
+  overflow: hidden;
+  transition: all .25s;
+}
+.projects-mockup .pm-stat-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--accent-grad); background-size: 200% 100%;
+  transform: scaleX(0); transform-origin: left;
+  transition: transform .45s cubic-bezier(.2,.8,.2,1);
+  animation: gradient-shift 6s ease infinite;
+}
+.projects-mockup .pm-stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: transparent; }
+.projects-mockup .pm-stat-card:hover::before { transform: scaleX(1); }
+body.dark .projects-mockup .pm-stat-card { background: #18181b; border-color: #27272a; }
+.projects-mockup .pm-stat-label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #a1a1aa;
+  font-weight: 900;
+}
+body.dark .projects-mockup .pm-stat-label { color: #71717a; }
+.projects-mockup .pm-stat-value {
+  font-weight: 900;
+  font-size: 36px;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  margin-top: 8px;
+  color: #18181b;
+  font-variant-numeric: tabular-nums;
+}
+body.dark .projects-mockup .pm-stat-value { color: #fafafa; }
+.projects-mockup .pm-stat-meta {
+  font-size: 12px;
+  color: #71717a;
+  margin-top: 6px;
+  font-weight: 600;
+}
+body.dark .projects-mockup .pm-stat-meta { color: #a1a1aa; }
+
+@media (max-width: 980px) {
+  .projects-mockup .pm-stats { grid-template-columns: repeat(2, 1fr); }
+  .projects-mockup .pm-h1 { font-size: 32px; }
+}

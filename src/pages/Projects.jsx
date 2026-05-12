@@ -1,20 +1,56 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CheckSquare, FolderOpen, Plus, Maximize2, Minimize2, X, ChevronDown, Check, Trash2 } from 'lucide-react';
+import { Plus, Maximize2, Minimize2, X, Trash2, Search, ArrowRight } from 'lucide-react';
 import gsap from 'gsap';
 import { Draggable } from 'gsap/Draggable';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcProjectProgress, healthSignal, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP } from '../lib/utils';
-import { animateBars, staggerIn, magnetic, reduced } from '../lib/motion';
-import Avatar from '../components/Avatar.jsx';
+import { calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP } from '../lib/utils';
+import { reduced } from '../lib/motion';
 import { createProject } from '../lib/data';
 import { useToast } from '../lib/toast';
+import Avatar from '../components/Avatar.jsx';
 
 if (typeof window !== 'undefined') gsap.registerPlugin(Draggable);
 
 const DRAFT_KEY = 'proGestion.newProjectDraft';
+
+// ============== Helpers tabla resumen ==============
+const isFinalStatus = (s) => s === 'Entregado' || s === 'Finalizado';
+
+function statusSlug(s) {
+  if (!s) return '';
+  return s.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function fmtDate(iso, lang = 'es') {
+  if (!iso) return '—';
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return iso;
+  const locale = lang === 'pt' ? 'pt-BR' : lang === 'en' ? 'en-US' : 'es-CO';
+  return d.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// Reemplaza `{n}` en cadenas i18n. Acepta una sola variable nombrada `n`.
+function interp(s, n) {
+  return (s || '').replace(/\{n\}/g, n);
+}
+
+function vencimiento(pj) {
+  if (isFinalStatus(pj.status)) return { days: 0, kind: 'done' };
+  if (!pj.projected_end_date) return { days: null, kind: 'none' };
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const fin = new Date(pj.projected_end_date + 'T00:00:00');
+  const days = Math.round((fin - today) / 86400000);
+  if (days < 0) return { days: Math.abs(days), kind: 'overdue' };
+  if (days <= 7) return { days, kind: 'soon' };
+  return { days, kind: 'ok' };
+}
+
 
 export default function Projects() {
   const projects = useStore(s => s.projects);
@@ -22,18 +58,23 @@ export default function Projects() {
   const categories = useStore(s => s.categories);
   const refreshProjects = useStore(s => s.refreshProjects);
   const { profile, can } = useAuth();
-  const { t } = useT();
-  const [filter, setFilter] = useState('all');
+  const { t, lang } = useT();
   const navigate = useNavigate();
   const loc = useLocation();
-  const ref = useRef(null);
   const showToast = useToast(s => s.show);
+
+  const [search, setSearch] = useState('');
+  const [filterCat, setFilterCat] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterOwner, setFilterOwner] = useState('');
+  const [sortBy, setSortBy] = useState('start_date');
+  const [sortDir, setSortDir] = useState('desc');
+
   const [showNew, setShowNew] = useState(false);
-  const [newMode, setNewMode] = useState('inline'); // 'inline' | 'popup'
+  const [newMode, setNewMode] = useState('inline');
   const [draftInitial, setDraftInitial] = useState(null);
 
-  // Restaurar borrador del localStorage al montar.
-  // Si hay datos no enviados de un proyecto a medio crear, reabrimos el panel.
+  // Restaurar borrador + handle openNew state.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
@@ -49,29 +90,89 @@ export default function Projects() {
         }
       }
     } catch { /* ignore */ }
-    // Si llegamos con state.openNew (botón sidebar "+ NUEVO PROYECTO"), abrimos el form.
-    // Limpiamos el state para que no se reabra al usar el back del navegador.
     if (loc.state?.openNew) {
       setShowNew(true);
       navigate(loc.pathname, { replace: true, state: {} });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const visible = useMemo(() => {
-    let list = can('viewAll') ? projects : projects.filter(p => p.owner_id === profile?.id || (p.member_ids || []).includes(profile?.id));
-    if (filter !== 'all') list = list.filter(p => p.category_id === filter);
-    return list;
-  }, [projects, profile, can, filter]);
+  const visiblePool = useMemo(
+    () => can('viewAll') ? projects : projects.filter(p => p.owner_id === profile?.id || (p.member_ids || []).includes(profile?.id)),
+    [projects, profile, can]
+  );
 
-  useEffect(() => {
-    if (reduced || !ref.current) return;
-    staggerIn(ref.current, '[data-card]');
-    animateBars(ref.current);
-    const cleanups = [];
-    ref.current.querySelectorAll('[data-card]').forEach(c => cleanups.push(magnetic(c, 0.08)));
-    return () => cleanups.forEach(c => c());
-  }, [visible.length, filter]);
+  // Filtros + búsqueda + sort
+  const rows = useMemo(() => {
+    let list = visiblePool;
+    if (filterCat) list = list.filter(p => p.category_id === filterCat);
+    if (filterStatus) list = list.filter(p => p.status === filterStatus);
+    if (filterOwner) {
+      if (filterOwner === '__none') list = list.filter(p => !p.owner_id);
+      else list = list.filter(p => p.owner_id === filterOwner);
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(p => {
+        const owner = profiles.find(u => u.id === p.owner_id);
+        const cat = categories.find(c => c.id === p.category_id);
+        const blob = `${p.title} ${p.goal || ''} ${p.client_lead || ''} ${p.observation || ''} ${owner?.name || ''} ${p.owner_label || ''} ${cat?.name || ''}`.toLowerCase();
+        return blob.includes(q);
+      });
+    }
+    list = [...list].sort((a, b) => {
+      let av, bv;
+      switch (sortBy) {
+        case 'title':
+          av = a.title || ''; bv = b.title || ''; break;
+        case 'category':
+          av = categories.find(c => c.id === a.category_id)?.name || '';
+          bv = categories.find(c => c.id === b.category_id)?.name || '';
+          break;
+        case 'client_lead':
+          av = a.client_lead || ''; bv = b.client_lead || ''; break;
+        case 'status':
+          av = a.status || ''; bv = b.status || ''; break;
+        case 'progress':
+          av = calcProjectProgress(a); bv = calcProjectProgress(b); break;
+        case 'owner':
+          av = profiles.find(u => u.id === a.owner_id)?.name || a.owner_label || '';
+          bv = profiles.find(u => u.id === b.owner_id)?.name || b.owner_label || '';
+          break;
+        case 'start_date':
+          av = a.start_date || ''; bv = b.start_date || ''; break;
+        case 'projected_end_date':
+          av = a.projected_end_date || ''; bv = b.projected_end_date || ''; break;
+        case 'vencimiento': {
+          const va = vencimiento(a), vb = vencimiento(b);
+          av = va.kind === 'overdue' ? -va.days : (va.days ?? 9999);
+          bv = vb.kind === 'overdue' ? -vb.days : (vb.days ?? 9999);
+          break;
+        }
+        default:
+          av = a[sortBy] || ''; bv = b[sortBy] || '';
+      }
+      if (typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av;
+      const cmp = av.toString().localeCompare(bv.toString(), 'es', { numeric: true });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return list;
+  }, [visiblePool, profiles, categories, filterCat, filterStatus, filterOwner, search, sortBy, sortDir]);
+
+  // Stats arriba
+  const stats = useMemo(() => {
+    const total = visiblePool.length;
+    const enDes = visiblePool.filter(p => p.status === 'En Desarrollo').length;
+    const finalized = visiblePool.filter(p => isFinalStatus(p.status)).length;
+    const overdue = visiblePool.filter(p => vencimiento(p).kind === 'overdue').length;
+    const avgCump = total ? Math.round(visiblePool.reduce((s, p) => s + calcProjectProgress(p), 0) / total) : 0;
+    return { total, enDes, finalized, overdue, avgCump };
+  }, [visiblePool]);
+
+  const toggleSort = (key) => {
+    if (sortBy === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(key); setSortDir('asc'); }
+  };
 
   const handleCreate = async (payload) => {
     try {
@@ -86,10 +187,8 @@ export default function Projects() {
     } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
   };
 
-  // Cerrar SIN borrar borrador. El draft sobrevive para retomar después.
   const cancelNew = () => { setShowNew(false); setNewMode('inline'); };
 
-  // Borrar borrador explícitamente.
   const discardDraft = () => {
     try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
     setDraftInitial(null);
@@ -98,44 +197,21 @@ export default function Projects() {
     showToast(t('projects.draftDiscarded'));
   };
 
-  // En modo inline ocultamos el grid: la página entra "en modo creación".
-  // En modo popup el grid sigue visible y el formulario flota arrastrable.
   const showGrid = !showNew || newMode === 'popup';
 
-  // Conteo de proyectos por categoría para las pills.
-  const countByCat = useMemo(() => {
-    const map = { all: 0 };
-    const pool = can('viewAll') ? projects : projects.filter(p => p.owner_id === profile?.id || (p.member_ids || []).includes(profile?.id));
-    map.all = pool.length;
-    for (const p of pool) {
-      const k = p.category_id || '__none__';
-      map[k] = (map[k] || 0) + 1;
-    }
-    return map;
-  }, [projects, profile, can]);
-
   return (
-    <section ref={ref} className="flex-1 p-4 md:p-10 overflow-y-auto scroller">
+    <section className="projects-mockup flex-1 p-4 md:p-10 overflow-y-auto scroller">
       <div className="max-w-[1500px] mx-auto">
-        <header className="mb-6 md:mb-10">
-          <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
-            <div>
-              <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">{t('projects.section')}</p>
-              <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">{showNew && newMode === 'inline' ? t('projects.newInitiative') : t('projects.title')}</h2>
-              <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">{showNew && newMode === 'inline' ? t('projects.formCompleteHint') : t('projects.subtitle')}</p>
-            </div>
-            {!showNew && can('createProject') && (
-              <button onClick={() => setShowNew(true)} className="btn-primary self-start md:self-auto flex-shrink-0"><Plus className="w-4 h-4" /> {t('projects.new')}</button>
-            )}
+        <header className="pm-header">
+          <div>
+            <p className="text-[10px] font-black text-violet-600 uppercase tracking-[0.25em] mb-2">{t('projects.section')}</p>
+            <h2 className="text-3xl md:text-4xl font-black text-ink-900 tracking-tight">{t('projects.title')}</h2>
+            <p className="text-ink-500 font-medium mt-1 text-sm md:text-base">{showNew && newMode === 'inline' ? t('projects.formCompleteHint') : t('projects.subtitle')}</p>
           </div>
-
-          {!showNew && (
-            <FilterDropdown
-              categories={categories}
-              filter={filter}
-              setFilter={setFilter}
-              countByCat={countByCat}
-            />
+          {!showNew && can('createProject') && (
+            <button onClick={() => setShowNew(true)} className="btn-primary">
+              <Plus className="w-4 h-4" /> {t('projects.new')}
+            </button>
           )}
         </header>
 
@@ -155,55 +231,121 @@ export default function Projects() {
         )}
 
         {showGrid && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {visible.map(pj => {
-              const cat = categories.find(c => c.id === pj.category_id);
-              const owner = profiles.find(u => u.id === pj.owner_id);
-              const prog = calcProjectProgress(pj);
-              const tasksTotal = pj.phases?.reduce((a, ph) => a + (ph.tasks?.length || 0), 0) || 0;
-              const tasksDone = pj.phases?.reduce((a, ph) => a + (ph.tasks?.filter(t => t.completed).length || 0), 0) || 0;
-              const h = healthSignal(pj, prog);
-              return (
-                <div key={pj.id} data-card onClick={() => navigate(`/projects/${pj.id}`)} className="card-light p-6 cursor-pointer group relative overflow-hidden">
-                  <div className="absolute top-0 left-0 right-0 h-1" style={{ background: cat?.color || '#cbd5e1' }} />
-                  <div className="flex justify-between items-start mb-4 mt-1">
-                    <div className="flex items-center gap-2">
-                      {cat && <span className="text-[10px] font-bold px-2.5 py-1 rounded-full" style={{ background: cat.color + '1a', color: cat.color }}>{cat.name}</span>}
-                      <span className={`status-dot status-${h}`} title={t('projects.healthLabel')}></span>
-                    </div>
-                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-ink-50 text-ink-600 border border-ink-100">{pj.status}</span>
-                  </div>
-                  <h3 className="text-lg font-black text-ink-900 mb-1 group-hover:text-violet-600 transition leading-tight">{pj.title}</h3>
-                  <p className="text-[10px] text-ink-400 font-semibold uppercase tracking-widest mb-3">{pj.company}</p>
-                  <p className="text-xs text-ink-500 italic line-clamp-2 mb-5 h-8 leading-relaxed">{pj.goal || t('projects.noGoal')}</p>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="flex-1 bg-ink-100 h-1.5 rounded-full overflow-hidden">
-                      <div className="progress-fill h-full rounded-full" data-bar={prog} style={{ width: 0 }} />
-                    </div>
-                    <span className="text-xs font-black text-violet-600 tabular">{prog}%</span>
-                  </div>
-                  <div className="flex items-center justify-between pt-4 border-t border-ink-100">
-                    <div className="flex items-center gap-2">
-                      {owner ? <Avatar user={owner} size={28} /> : <Avatar user={{ name: pj.owner_label || '?' }} size={28} />}
-                      <span className="text-[11px] font-semibold text-ink-600">{owner?.name || pj.owner_label || t('projects.noLeader')}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[10px] font-semibold text-ink-500 tabular">
-                      <CheckSquare className="w-3 h-3" />
-                      <span>{tasksDone}/{tasksTotal}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            {!visible.length && (
-              <div className="col-span-3">
-                <div className="empty">
-                  <div className="icon-wrap"><FolderOpen className="w-8 h-8 text-ink-400" /></div>
-                  <p className="text-sm text-ink-400 italic font-medium">{t('projects.empty')}</p>
-                </div>
+          <>
+            <div className="pm-stats">
+              <StatCard label={t('projects.stat.total')} value={stats.total} meta={interp(t('projects.stat.completed'), stats.finalized)} />
+              <StatCard label={t('projects.stat.inDev')} value={stats.enDes} meta={stats.total ? interp(t('projects.stat.ofPortfolio'), Math.round(stats.enDes / stats.total * 100)) : '—'} />
+              <StatCard label={t('projects.stat.avgProgress')} value={`${stats.avgCump}%`} meta={t('projects.stat.overTotal')} color={stats.avgCump >= 70 ? '#10b981' : stats.avgCump >= 40 ? '#f59e0b' : '#ef4444'} />
+              <StatCard label={t('projects.stat.overdue')} value={stats.overdue} meta={stats.overdue ? t('projects.stat.needsAttention') : t('projects.stat.onTrack')} color={stats.overdue ? '#ef4444' : undefined} />
+            </div>
+
+            <div className="pm-filters">
+              <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+                <Search style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: '#7a7770' }} />
+                <input
+                  className="pm-input"
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder={t('projects.searchPlaceholder')}
+                  style={{ paddingLeft: 32 }}
+                />
               </div>
-            )}
-          </div>
+              <select className="pm-select" value={filterCat} onChange={e => setFilterCat(e.target.value)}>
+                <option value="">{t('projects.allTypes')}</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select className="pm-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                <option value="">{t('projects.allStatus')}</option>
+                {STATUSES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+              </select>
+              <select className="pm-select" value={filterOwner} onChange={e => setFilterOwner(e.target.value)}>
+                <option value="">{t('projects.allResponsible')}</option>
+                {profiles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                <option value="__none">{t('projects.unassigned')}</option>
+              </select>
+            </div>
+
+            <div className="pm-table-wrap">
+              <table className="pm-table">
+                <thead>
+                  <tr>
+                    <Th k="title" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.project')}</Th>
+                    <Th k="category" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.type')}</Th>
+                    <Th k="client_lead" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.dependency')}</Th>
+                    <Th k="status" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.status')}</Th>
+                    <Th k="progress" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.progress')}</Th>
+                    <Th k="owner" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.responsible')}</Th>
+                    <Th k="start_date" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.start')}</Th>
+                    <Th k="projected_end_date" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.end')}</Th>
+                    <Th k="vencimiento" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.due')}</Th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(p => {
+                    const cat = categories.find(c => c.id === p.category_id);
+                    const owner = profiles.find(u => u.id === p.owner_id);
+                    const ownerName = owner?.name || p.owner_label || '';
+                    const prog = calcProjectProgress(p);
+                    const v = vencimiento(p);
+                    const progClass = prog >= 70 ? 'ok' : prog >= 40 ? '' : 'low';
+                    return (
+                      <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
+                        <td>
+                          <div className="pm-cell-title">{p.title}</div>
+                          {p.goal && <div className="pm-cell-sub">{p.goal}</div>}
+                        </td>
+                        <td>
+                          {cat
+                            ? <span className="pm-badge tipo">{cat.name}</span>
+                            : <span className="pm-muted">—</span>}
+                        </td>
+                        <td>{p.client_lead || <span className="pm-muted">—</span>}</td>
+                        <td>
+                          <span className={`pm-badge estado-${statusSlug(p.status)}`}>
+                            <span className="pm-badge-dot" />{p.status || '—'}
+                          </span>
+                        </td>
+                        <td style={{ minWidth: 130 }}>
+                          <div className="pm-progress-label">{prog}%</div>
+                          <div className="pm-progress"><div className={`pm-progress-bar ${progClass}`} style={{ width: prog + '%' }} /></div>
+                        </td>
+                        <td>
+                          {ownerName
+                            ? <div className="pm-resp">
+                                {owner ? <Avatar user={owner} size={28} /> : <Avatar user={{ name: ownerName }} size={28} />}
+                                <span className="pm-resp-name">{ownerName}</span>
+                              </div>
+                            : <span className="pm-muted">—</span>}
+                        </td>
+                        <td className="pm-cell-mono">{fmtDate(p.start_date, lang)}</td>
+                        <td className="pm-cell-mono">{fmtDate(p.projected_end_date, lang)}</td>
+                        <td>
+                          {v.kind === 'overdue' && <span className="pm-badge delay">{interp(t('projects.daysOverdue'), v.days)}</span>}
+                          {v.kind === 'soon' && <span className="pm-badge warn" style={{ fontSize: 10 }}>{interp(t('projects.dueIn'), v.days)}</span>}
+                          {v.kind === 'ok' && <span className="pm-cell-mono">{interp(t('projects.dueIn'), v.days)}</span>}
+                          {v.kind === 'done' && <span className="pm-cell-mono" style={{ color: '#10b981' }}>{t('projects.dueOk')}</span>}
+                          {v.kind === 'none' && <span className="pm-muted">—</span>}
+                        </td>
+                        <td className="pm-text-right">
+                          <button className="pm-icon-btn" onClick={(e) => { e.stopPropagation(); navigate(`/projects/${p.id}`); }} title={t('projects.openProject')}>
+                            <ArrowRight className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {rows.length === 0 && (
+                <div className="pm-empty">
+                  <div className="pm-empty-title">{t('projects.emptyTitle')}</div>
+                  <div>{t('projects.emptyBody')}</div>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 
@@ -225,114 +367,26 @@ export default function Projects() {
   );
 }
 
-function FilterDropdown({ categories, filter, setFilter, countByCat }) {
-  const { t } = useT();
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-  const menuRef = useRef(null);
-
-  // Cerrar al click fuera o tecla Escape.
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDoc);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  // Animación apertura del menú.
-  useEffect(() => {
-    if (!open || reduced || !menuRef.current) return;
-    gsap.fromTo(menuRef.current,
-      { y: -6, opacity: 0, scale: 0.97 },
-      { y: 0, opacity: 1, scale: 1, duration: 0.22, ease: 'power3.out', transformOrigin: 'top left' }
-    );
-  }, [open]);
-
-  const current = filter === 'all' ? null : categories.find(c => c.id === filter);
-  const currentLabel = current ? current.name : t('projects.allCategories');
-  const currentColor = current ? current.color : '#71717a';
-  const currentCount = filter === 'all' ? (countByCat.all || 0) : (countByCat[filter] || 0);
-
-  const select = (val) => { setFilter(val); setOpen(false); };
-
+function Th({ k, sortBy, sortDir, toggleSort, children }) {
+  const active = sortBy === k;
   return (
-    <div className="mt-5 md:mt-6">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-[9px] font-black text-ink-400 uppercase tracking-[0.25em]">{t('projects.filterByType')}</span>
-        <div className="flex-1 h-px bg-gradient-to-r from-ink-200/70 to-transparent" />
-      </div>
-      <div ref={wrapRef} className="relative w-full md:max-w-sm">
-        <button
-          type="button"
-          onClick={() => setOpen(o => !o)}
-          className={`w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl border bg-white text-left transition-all ${open ? 'border-violet-500 shadow-lg shadow-violet-500/15' : 'border-ink-200 hover:border-violet-300 hover:shadow-md'}`}
-          aria-expanded={open}
-          aria-haspopup="listbox"
-        >
-          <span
-            className="w-2.5 h-2.5 rounded-full flex-shrink-0 ring-2"
-            style={{ background: currentColor, boxShadow: `0 0 0 3px ${currentColor}22` }}
-          />
-          <span className="text-[12px] font-bold text-ink-800 flex-1 truncate">{currentLabel}</span>
-          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-ink-100 text-ink-700 tabular flex-shrink-0">{currentCount}</span>
-          <ChevronDown className={`w-3.5 h-3.5 text-ink-400 transition-transform duration-200 flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
-        </button>
+    <th onClick={() => toggleSort(k)} className={active ? 'sorted' : ''}>
+      {children}{active ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+    </th>
+  );
+}
 
-        {open && (
-          <div
-            ref={menuRef}
-            role="listbox"
-            className="absolute z-30 mt-2 left-0 right-0 md:right-auto md:w-full bg-white border border-ink-200 rounded-2xl shadow-2xl overflow-hidden"
-          >
-            <div className="max-h-[60vh] overflow-y-auto py-1 scroller">
-              <FilterRow
-                active={filter === 'all'}
-                color="#71717a"
-                label={t('projects.allCategories')}
-                count={countByCat.all || 0}
-                onClick={() => select('all')}
-              />
-              {categories.length > 0 && <div className="h-px bg-ink-100 mx-3 my-1" />}
-              {categories.map(c => (
-                <FilterRow
-                  key={c.id}
-                  active={filter === c.id}
-                  color={c.color}
-                  label={c.name}
-                  count={countByCat[c.id] || 0}
-                  onClick={() => select(c.id)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+function StatCard({ label, value, meta, color }) {
+  return (
+    <div className="pm-stat-card">
+      <div className="pm-stat-label">{label}</div>
+      <div className="pm-stat-value" style={color ? { color } : undefined}>{value}</div>
+      <div className="pm-stat-meta">{meta}</div>
     </div>
   );
 }
 
-function FilterRow({ active, color, label, count, onClick }) {
-  return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={active}
-      onClick={onClick}
-      className={`w-full flex items-center gap-2.5 px-4 py-2.5 transition-all ${active ? 'bg-violet-50' : 'hover:bg-ink-50'}`}
-    >
-      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
-      <span className={`text-[12px] flex-1 text-left truncate ${active ? 'font-black text-violet-700' : 'font-semibold text-ink-700'}`}>{label}</span>
-      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full tabular flex-shrink-0 ${active ? 'bg-violet-200 text-violet-800' : 'bg-ink-100 text-ink-600'}`}>{count}</span>
-      {active && <Check className="w-3.5 h-3.5 text-violet-600 flex-shrink-0" />}
-    </button>
-  );
-}
-
+// ============== NewProjectForm (intacto, mismo flujo previo) ==============
 function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner, initialForm, onClose, onDiscard, onSubmit, onToggleMode }) {
   const showToast = useToast(s => s.show);
   const { t } = useT();
@@ -353,10 +407,6 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
     observation: ''
   });
 
-  // Autosave del borrador en localStorage SIN debounce.
-  // localStorage.setItem es síncrono y rápido (microsegundos) para JSON pequeño,
-  // así que escribir en cada keystroke evita perder datos al cambiar de ruta o
-  // cerrar la pestaña a mitad de tipear.
   useEffect(() => {
     try {
       const empty = !form.title.trim() && !form.company.trim() && !form.goal.trim()
@@ -369,7 +419,6 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
     } catch { /* quota o LS bloqueado */ }
   }, [form, mode]);
 
-  // Salvavidas extra: guardar al cerrar la pestaña (refresh, cierre navegador, etc.).
   useEffect(() => {
     const onBeforeUnload = () => {
       try {
@@ -387,8 +436,6 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
   const cardRef = useRef(null);
   const handleRef = useRef(null);
 
-  // Drag solo en modo popup. trigger = barra superior (handleRef).
-  // Bounds = window: la tarjeta no se sale de la ventana.
   useEffect(() => {
     if (mode !== 'popup' || !cardRef.current || !handleRef.current) return;
     if (reduced) return;
@@ -404,7 +451,6 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
     return () => { drag.forEach(d => d.kill()); };
   }, [mode]);
 
-  // Animación de entrada del popup.
   useEffect(() => {
     if (mode !== 'popup' || !cardRef.current || reduced) return;
     gsap.fromTo(cardRef.current, { y: 16, scale: 0.97, opacity: 0 }, { y: 0, scale: 1, opacity: 1, duration: 0.35, ease: 'back.out(1.4)' });
@@ -437,15 +483,10 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
   const selectedCat = categories.find(c => c.id === form.category_id);
   const catHelp = selectedCat ? PROJECT_CATEGORY_HELP[selectedCat.name] : null;
 
-  // En popup centramos con inset-x-0 + mx-auto (sin translate, para no chocar con
-  // el transform que GSAP Draggable aplicará al arrastrar).
   const wrapCls = mode === 'popup'
     ? 'fixed top-24 inset-x-0 mx-auto z-50 w-[640px] max-w-[92vw] max-h-[80vh] bg-white rounded-3xl shadow-2xl border border-ink-200 flex flex-col overflow-hidden'
     : 'bg-white rounded-3xl shadow-sm border border-ink-100 flex flex-col overflow-hidden mb-10';
 
-  // En inline usamos bg-violet-50 sólido (tiene override dark en index.css).
-  // El gradient claro from-violet-50 → fuchsia-50 NO tiene override y deja el
-  // texto ink-900 (que pasa a blanco en dark) invisible sobre fondo claro.
   const headerCls = mode === 'popup'
     ? 'px-5 py-3 border-b bg-gradient-to-r from-violet-700 to-fuchsia-700 text-white flex justify-between items-center cursor-grab active:cursor-grabbing select-none'
     : 'px-6 py-4 border-b bg-violet-50 flex justify-between items-center';
