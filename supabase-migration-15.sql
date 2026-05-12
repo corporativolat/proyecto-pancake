@@ -1,8 +1,11 @@
 -- ===========================================================
 -- migration-15: parche owner_label para proyectos ya cargados
--- desde el Excel "Tabla de resumen". Solo aplica si ya corriste
--- migration-14 y los proyectos quedaron sin owner_label.
+-- desde el Excel "Tabla de resumen". Self-contained: asegura
+-- la columna por si mig-14 no se corrió antes.
 -- ===========================================================
+
+alter table pro_gestion.projects
+  add column if not exists owner_label text not null default '';
 
 with owner_map (title, owner_name) as (
   values
