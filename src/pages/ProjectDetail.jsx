@@ -36,6 +36,16 @@ export default function ProjectDetail() {
   const [showExec, setShowExec] = useState(false);
   const [mobileTab, setMobileTab] = useState('roadmap'); // 'roadmap' | 'gantt'
   const [roadmapPopup, setRoadmapPopup] = useState(false);
+  const [headerCollapsed, setHeaderCollapsed] = useState(() => {
+    try { return localStorage.getItem('pj-header-collapsed') === '1'; } catch { return false; }
+  });
+  const toggleHeader = () => {
+    setHeaderCollapsed(v => {
+      const nv = !v;
+      try { localStorage.setItem('pj-header-collapsed', nv ? '1' : '0'); } catch {}
+      return nv;
+    });
+  };
   const headerRef = useRef(null);
   const phasesScrollRef = useRef(null);
   const ganttScrollRef = useRef(null);
@@ -98,8 +108,8 @@ export default function ProjectDetail() {
 
   return (
     <section className="flex-1 flex flex-col overflow-hidden bg-white relative">
-      <div ref={headerRef} className="pj-header px-4 py-4 md:px-10 md:py-6 border-b bg-white z-20 flex-shrink-0">
-        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-3 mb-4 md:mb-5">
+      <div ref={headerRef} className="pj-header px-4 py-3 md:px-10 md:py-3 border-b bg-white z-20 flex-shrink-0">
+        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-2 mb-2 md:mb-3">
           <div className="flex-1 max-w-4xl min-w-0">
             <input
               type="text" value={project.title} disabled={!editable}
@@ -185,6 +195,10 @@ export default function ProjectDetail() {
                 <span className="text-sm font-black text-violet-600 tabular">{projProg}%</span>
               </div>
             </div>
+            <button onClick={toggleHeader} className="btn-soft" title={headerCollapsed ? 'Mostrar detalles' : 'Ocultar detalles'}>
+              {headerCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{headerCollapsed ? 'Detalles' : 'Compactar'}</span>
+            </button>
             <button onClick={() => setShowFull(true)} className="btn-soft"><Maximize2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t('pj.expand')}</span></button>
             <button onClick={() => setShowExec(true)} className="btn-soft"><FileText className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t('pj.report')}</span></button>
             {can('deleteProject') && <button onClick={handleDelete} className="btn-danger"><Trash2 className="w-3.5 h-3.5" /></button>}
@@ -192,12 +206,13 @@ export default function ProjectDetail() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-5 pj-extra">
+        {!headerCollapsed && (<>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pj-extra">
           <div className="md:col-span-2">
             <DetailLabel label={t('pj.objectiveLabel')} help={PROJECT_FIELD_HELP.goal} />
-            <textarea value={project.goal || ''} disabled={!editable} onChange={e => debouncedUpdate('goal', e.target.value)} className="input-light h-20 resize-none" placeholder={t('pj.objectivePlaceholder')} />
+            <textarea value={project.goal || ''} disabled={!editable} onChange={e => debouncedUpdate('goal', e.target.value)} className="input-light h-14 resize-none" placeholder={t('pj.objectivePlaceholder')} />
           </div>
-          <div className="space-y-3">
+          <div className="space-y-2">
             <div>
               <DetailLabel label={t('pj.responsibleLabel')} help={PROJECT_FIELD_HELP.owner_id} />
               <label className="text-[11px] font-bold text-ink-600 flex items-center gap-2 cursor-pointer select-none mb-1.5">
@@ -265,11 +280,11 @@ export default function ProjectDetail() {
           </div>
           <div>
             <DetailLabel label={t('pj.observationsLabel')} help={PROJECT_FIELD_HELP.observation} />
-            <textarea value={project.observation || ''} disabled={!editable} onChange={e => debouncedUpdate('observation', e.target.value)} className="w-full bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 text-[11px] font-medium italic text-amber-900 outline-none h-24 resize-none focus:ring-2 focus:ring-amber-500" placeholder={t('pj.observationsPlaceholder')} />
+            <textarea value={project.observation || ''} disabled={!editable} onChange={e => debouncedUpdate('observation', e.target.value)} className="w-full bg-amber-50 border border-amber-100 rounded-2xl px-4 py-2 text-[11px] font-medium italic text-amber-900 outline-none h-14 resize-none focus:ring-2 focus:ring-amber-500" placeholder={t('pj.observationsPlaceholder')} />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-5 pj-extra mt-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pj-extra mt-2">
           <div>
             <DetailLabel label={t('pj.dependencyLabel')} help={PROJECT_FIELD_HELP.client_lead} />
             <input type="text" value={project.client_lead || ''} disabled={!editable} onChange={e => debouncedUpdate('client_lead', e.target.value)} placeholder={t('pj.dependencyPlaceholder')} className="input-light" />
@@ -293,8 +308,8 @@ export default function ProjectDetail() {
           </div>
         </div>
 
-        <div className="mt-4 pj-extra">
-          <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-2 block">{t('pj.team')}</label>
+        <div className="mt-2 pj-extra">
+          <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-1 block">{t('pj.team')}</label>
           <div className="flex flex-wrap gap-2">
             {profiles.map(u => {
               const isOwner = project.owner_id === u.id;
@@ -310,6 +325,7 @@ export default function ProjectDetail() {
             })}
           </div>
         </div>
+        </>)}
       </div>
 
       {/* Tabs solo en móvil. >=md ambos paneles se muestran lado a lado. */}
@@ -354,7 +370,7 @@ export default function ProjectDetail() {
         return (
           <>
             <div className="flex-1 overflow-hidden flex min-h-0">
-              <div className={`${mobileTab === 'roadmap' ? 'flex' : 'hidden'} md:flex w-full md:w-[680px] lg:w-[760px] md:border-r flex-col bg-ink-50/40 min-h-0 min-w-0`}>
+              <div className={`${mobileTab === 'roadmap' ? 'flex' : 'hidden'} md:flex w-full md:flex-1 md:border-r flex-col bg-ink-50/40 min-h-0 min-w-0`}>
                 <div className="p-4 bg-white border-b flex justify-between items-center gap-2">
                   <span className="font-black text-[10px] text-ink-400 uppercase tracking-widest flex items-center gap-2 min-w-0">
                     <Map className="w-3 h-3 flex-shrink-0" /> <span className="truncate">{t('pj.roadmap')}</span>
@@ -389,7 +405,7 @@ export default function ProjectDetail() {
                   </div>
                 )}
               </div>
-              <div className={`${mobileTab === 'gantt' ? 'block' : 'hidden'} md:block flex-1 relative min-h-0 min-w-0`}>
+              <div className={`${mobileTab === 'gantt' ? 'block' : 'hidden'} md:block md:w-[440px] lg:w-[520px] xl:w-[600px] flex-shrink-0 relative min-h-0 min-w-0`}>
                 <div ref={ganttScrollRef} className="absolute inset-0 bg-white overflow-auto scroller-pro">
                   <GanttCanvas project={project} editable={editable} onChange={refreshProjects} onEditTask={(tk, phaseId) => setEditingTask({ ...tk, phaseId })} scrollerRef={ganttScrollRef} />
                 </div>
