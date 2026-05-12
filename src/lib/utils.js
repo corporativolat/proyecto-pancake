@@ -30,6 +30,57 @@ export function healthSignal(project, prog) {
   return 'red';
 }
 
+// Salud efectiva: si el proyecto tiene `health_override` (1/2/3) lo respeta;
+// de lo contrario delega a `healthSignal()`. Devuelve 'green' | 'amber' | 'red' | 'gray'.
+export function effectiveHealth(project, prog) {
+  const ov = project?.health_override;
+  if (ov === 1) return 'green';
+  if (ov === 2) return 'amber';
+  if (ov === 3) return 'red';
+  return healthSignal(project, prog);
+}
+
+// Campos críticos para considerar un proyecto "completo".
+// Owner cuenta si owner_id o owner_label están llenos (req B3).
+export const PROJECT_CRITICAL_FIELDS = [
+  'title', 'category_id', 'owner', 'start_date',
+  'projected_end_date', 'goal', 'contract_url',
+  'project_value', 'project_hours'
+];
+
+// Score 0-100 de cuán completo está un proyecto. Útil para tabla y dashboard.
+export function projectCompleteness(p) {
+  if (!p) return 0;
+  let filled = 0;
+  for (const f of PROJECT_CRITICAL_FIELDS) {
+    let v;
+    if (f === 'owner') v = p.owner_id || (p.owner_label && p.owner_label.trim());
+    else v = p[f];
+    if (v !== null && v !== undefined && v !== '' && v !== 0) filled++;
+    else if (f === 'project_value' || f === 'project_hours') {
+      // 0 cuenta como vacío pero null/undefined también. Ya manejado arriba.
+    }
+  }
+  return Math.round((filled / PROJECT_CRITICAL_FIELDS.length) * 100);
+}
+
+// True si proyecto ya cerró (no debe contar como "vencido").
+export const isFinalStatus = (s) => s === 'Finalizado' || s === 'Entregado';
+
+// Vencimiento contra projected_end_date vs hoy.
+// kind: 'overdue' | 'soon' (≤7d) | 'ok' | 'done' (finalizado) | 'none' (sin fecha)
+export function vencimiento(project) {
+  if (!project) return { days: null, kind: 'none' };
+  if (isFinalStatus(project.status)) return { days: 0, kind: 'done' };
+  if (!project.projected_end_date) return { days: null, kind: 'none' };
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const fin = new Date(project.projected_end_date + 'T00:00:00');
+  const days = Math.round((fin - today) / 86400000);
+  if (days < 0) return { days: Math.abs(days), kind: 'overdue' };
+  if (days <= 7) return { days, kind: 'soon' };
+  return { days, kind: 'ok' };
+}
+
 export const STATUSES = [
   { name: 'No iniciado', color: '#a1a1aa' },
   { name: 'Planeación', color: '#06b6d4' },

@@ -9,11 +9,12 @@ import { countUp, animateBars, staggerIn, confetti, reduced } from '../lib/motio
 import { updateTask } from '../lib/data';
 import { useToast } from '../lib/toast';
 import TeamMetricsBar from '../components/TeamMetricsBar.jsx';
+import TeamMembersGrid from '../components/TeamMembersGrid.jsx';
 
 export default function Team() {
   const projects = useStore(s => s.projects);
   const refreshProjects = useStore(s => s.refreshProjects);
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
   const navigate = useNavigate();
   const ref = useRef(null);
   const showToast = useToast(s => s.show);
@@ -77,6 +78,12 @@ export default function Team() {
             </div>
           </div>
         </div>
+
+        {can('viewAll') && (
+          <div className="mb-6 md:mb-8">
+            <TeamMembersGrid />
+          </div>
+        )}
 
         <div className="mb-6 md:mb-8">
           <TeamMetricsBar projects={myProjects} />

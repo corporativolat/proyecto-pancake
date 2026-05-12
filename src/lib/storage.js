@@ -38,6 +38,26 @@ export async function uploadAttachment(userId, taskId, file) {
   return { url: data.publicUrl, name: file.name, size: file.size, type: file.type, ext };
 }
 
+// Sube un archivo de contrato al bucket `attachments` bajo la ruta
+// `{userId}/contracts/{slot}/{ts}-{safeName}`. `slot` puede ser el id del
+// proyecto si ya existe, o un uuid temporal generado en cliente cuando se
+// crea desde el form de "Nuevo proyecto" (el id real se genera en el insert).
+// El path siempre empieza con `{userId}/...`, así cumple la RLS de storage
+// (policy attachments_owner_first_folder en mig-7).
+export async function uploadContract(userId, slot, file) {
+  if (!file) throw new Error('Archivo requerido');
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (!ALLOWED_ATTACHMENT_EXT.has(ext)) {
+    throw new Error(`Tipo de archivo .${ext} no permitido`);
+  }
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const path = `${userId}/contracts/${slot || 'tmp'}/${Date.now()}-${safeName}`;
+  const { error } = await supabase.storage.from('attachments').upload(path, file, { upsert: false, cacheControl: '3600' });
+  if (error) throw error;
+  const { data } = supabase.storage.from('attachments').getPublicUrl(path);
+  return { url: data.publicUrl, name: file.name, size: file.size, type: file.type, ext };
+}
+
 export async function removeAttachmentFile(url) {
   if (!url) return;
   const idx = url.indexOf('/attachments/');

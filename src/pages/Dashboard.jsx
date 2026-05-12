@@ -2,17 +2,20 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
-import { FolderKanban, Zap, CheckCircle2, TrendingUp, Search } from 'lucide-react';
+import { FolderKanban, Zap, CheckCircle2, TrendingUp, Search, AlertTriangle, ChevronDown } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcProjectProgress, healthSignal, STATUSES } from '../lib/utils';
+import { calcProjectProgress, healthSignal, STATUSES, vencimiento } from '../lib/utils';
 import { countUp, animateBars, staggerIn, reduced } from '../lib/motion';
 import Avatar from '../components/Avatar.jsx';
 import ActivityFeed from '../components/ActivityFeed.jsx';
 import Skeleton from '../components/Skeleton.jsx';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
+
+// Sustituye `{n}` en cadenas i18n.
+const interpN = (s, n) => (s || '').replace(/\{n\}/g, n);
 
 export default function Dashboard() {
   const projects = useStore(s => s.projects);
@@ -34,6 +37,31 @@ export default function Dashboard() {
   const finished = visible.filter(p => p.status === 'Finalizado').length;
   const active = visible.filter(p => ['En Desarrollo', 'Planeación'].includes(p.status)).length;
   const avg = total ? Math.round(visible.reduce((a, p) => a + calcProjectProgress(p), 0) / total) : 0;
+  const overdueList = useMemo(
+    () => visible
+      .map(p => ({ p, v: vencimiento(p) }))
+      .filter(x => x.v.kind === 'overdue')
+      .sort((a, b) => b.v.days - a.v.days),
+    [visible]
+  );
+  const overdueCount = overdueList.length;
+
+  // Riesgo: proyectos que necesitan atención por completitud/seguimiento.
+  const risks = useMemo(() => {
+    const now = Date.now();
+    const DAYS_STALE = 14;
+    const isActive = p => p.status !== 'No iniciado' && p.status !== 'Finalizado' && p.status !== 'Entregado';
+    return {
+      noOwner: visible.filter(p => !p.owner_id && !(p.owner_label && p.owner_label.trim()) && isActive(p)),
+      noEnd: visible.filter(p => !p.projected_end_date && isActive(p)),
+      stale: visible.filter(p => {
+        if (!p.updated_at) return false;
+        const diffDays = (now - new Date(p.updated_at).getTime()) / 86400000;
+        return diffDays > DAYS_STALE && isActive(p);
+      }),
+      noMilestones: visible.filter(p => (!p.milestones || p.milestones.length === 0) && isActive(p)),
+    };
+  }, [visible]);
 
   useEffect(() => {
     if (reduced || !ref.current) return;
@@ -97,10 +125,11 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 mb-10">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5 mb-6">
           <KPI label={t('dash.kpi.initiatives')} target={total} icon={<FolderKanban className="w-4 h-4 text-violet-600" />} iconBg="bg-violet-50" valueClass="text-ink-900" />
           <KPI label={t('dash.kpi.active')} target={active} icon={<Zap className="w-4 h-4 text-amber-600" />} iconBg="bg-amber-50" valueClass="text-amber-500" />
           <KPI label={t('dash.kpi.finished')} target={finished} icon={<CheckCircle2 className="w-4 h-4 text-emerald-600" />} iconBg="bg-emerald-50" valueClass="text-emerald-500" />
+          <KPI label={t('dash.kpi.overdue')} target={overdueCount} icon={<AlertTriangle className="w-4 h-4 text-red-600" />} iconBg="bg-red-50" valueClass={overdueCount ? 'text-red-500' : 'text-ink-400'} />
           <div className="kpi-card kpi-primary" data-stagger>
             <div className="flex justify-between items-start mb-3">
               <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{t('dash.kpi.health')}</div>
@@ -112,6 +141,74 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {(risks.noOwner.length + risks.noEnd.length + risks.stale.length + risks.noMilestones.length) > 0 && (
+          <div className="mb-6">
+            <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+              <AlertTriangle className="w-3.5 h-3.5" /> {t('dash.risk.title')}
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <RiskCard label={t('dash.risk.noOwner')} count={risks.noOwner.length} color="#ef4444" />
+              <RiskCard label={t('dash.risk.noEnd')} count={risks.noEnd.length} color="#f59e0b" />
+              <RiskCard label={t('dash.risk.stale')} count={risks.stale.length} color="#a855f7" />
+              <RiskCard label={t('dash.risk.noMilestones')} count={risks.noMilestones.length} color="#0ea5e9" />
+            </div>
+          </div>
+        )}
+
+        {overdueCount > 0 && (
+          <details className="card-light mb-10 group">
+            <summary className="px-7 py-5 cursor-pointer flex items-center justify-between list-none">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center">
+                  <AlertTriangle className="w-4 h-4 text-red-600" />
+                </div>
+                <div>
+                  <div className="text-sm font-black text-ink-800">{t('dash.overdue.title')}</div>
+                  <div className="text-[11px] font-semibold text-ink-500">{interpN(t('dash.overdue.count'), overdueCount)}</div>
+                </div>
+              </div>
+              <ChevronDown className="w-4 h-4 text-ink-400 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-ink-100 overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-ink-50/60 border-b">
+                  <tr>
+                    <Th>{t('dash.col.project')}</Th>
+                    <Th>{t('dash.col.owner')}</Th>
+                    <Th>{t('dash.overdue.daysOverdueLabel')}</Th>
+                    <Th>{t('projects.col.end')}</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ink-100">
+                  {overdueList.map(({ p, v }) => {
+                    const owner = profiles.find(u => u.id === p.owner_id);
+                    return (
+                      <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)} className="hover:bg-red-50/40 transition cursor-pointer">
+                        <td className="px-6 py-3">
+                          <div className="font-bold text-ink-800 text-sm">{p.title}</div>
+                          <div className="text-[10px] text-ink-400 font-semibold mt-0.5">{p.company || ''}</div>
+                        </td>
+                        <td className="px-6 py-3">
+                          <div className="flex items-center gap-2">
+                            <Avatar user={owner || { name: p.owner_label || '?' }} size={24} />
+                            <span className="text-[11px] font-semibold text-ink-600">{owner?.name || p.owner_label || '-'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-3">
+                          <span className="px-2.5 py-1 bg-red-50 border border-red-200 rounded-full text-[10px] font-black text-red-700 tabular">+{v.days}d</span>
+                        </td>
+                        <td className="px-6 py-3">
+                          <span className="text-[11px] font-mono text-ink-600 tabular">{p.projected_end_date ? new Date(p.projected_end_date + 'T00:00:00').toLocaleDateString(lang, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-10">
           <div className="lg:col-span-2 card-light p-7" data-stagger>
@@ -271,4 +368,15 @@ function KPI({ label, target, icon, iconBg, valueClass }) {
 }
 function Th({ children }) {
   return <th className="px-6 py-3 text-[10px] font-black text-ink-400 uppercase tracking-[0.2em]">{children}</th>;
+}
+
+function RiskCard({ label, count, color }) {
+  return (
+    <div className="card-light p-4 flex items-center gap-3" style={{ borderLeft: `3px solid ${color}` }}>
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] font-black text-ink-500 uppercase tracking-widest truncate">{label}</div>
+        <div className="text-2xl font-black tabular mt-1" style={{ color: count ? color : '#a1a1aa' }}>{count}</div>
+      </div>
+    </div>
+  );
 }

@@ -26,6 +26,16 @@ const PageFallback = () => (
   <div className="flex-1 flex items-center justify-center text-ink-400 font-bold tracking-widest text-xs animate-pulse">CARGANDO…</div>
 );
 
+// Resuelve la ruta de landing post-login. Respeta profile.landing_route si
+// el usuario tiene permiso; si no, fallback al default según rol.
+function resolveLanding(profile, can) {
+  const wants = profile?.landing_route;
+  if (wants === '/dashboard' && can('viewKPIs')) return '/dashboard';
+  if (wants === '/projects') return '/projects';
+  if (wants === '/team') return '/team';
+  return can('viewKPIs') ? '/dashboard' : '/team';
+}
+
 export default function App() {
   const { session, profile, loading, can } = useAuth();
   const refreshAll = useStore(s => s.refreshAll);
@@ -103,7 +113,7 @@ export default function App() {
         <Layout onOpenCmd={() => setCmdOpen(true)} onOpenShort={() => setShortOpen(true)}>
           <Suspense fallback={<PageFallback />}>
             <Routes>
-              <Route path="/" element={<Navigate to={can('viewKPIs') ? '/dashboard' : '/team'} replace />} />
+              <Route path="/" element={<Navigate to={resolveLanding(profile, can)} replace />} />
               {can('viewKPIs') && <Route path="/dashboard" element={<Dashboard />} />}
               <Route path="/team" element={<Team />} />
               <Route path="/projects" element={<Projects />} />

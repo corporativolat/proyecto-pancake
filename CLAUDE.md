@@ -34,6 +34,32 @@ Postgres vive en Supabase y todo el schema custom es `pro_gestion` (no `public`)
 8. `supabase-migration-12.sql` — abre creación de proyectos a `miembro`. `projects_insert` ahora exige `owner_id = auth.uid()` (o admin/gerente). Update/delete no cambian: `projects_update` ya permitía al owner, `projects_delete` sigue admin-only. Phases/tasks/milestones insert ya permitían al owner, así que un miembro que crea un proyecto queda como owner y puede gestionar todo dentro de él.
 10. `supabase-migration-14.sql` — campos `projects.manual_progress` (smallint 0-100, nullable), `projects.client_contact` (text) y `projects.owner_label` (text NOT NULL DEFAULT ''). `calcProjectProgress` en `src/lib/utils.js` ahora prioriza el progreso calculado por tareas; si el proyecto no tiene ninguna tarea, usa `manual_progress` como fallback. `owner_label` se muestra como fallback en `Projects.jsx`, `Dashboard.jsx`, `ProjectDetail.jsx` y `exporters.js` cuando `owner_id` es null (responsable sin cuenta en la plataforma). En `ProjectDetail.jsx` el campo es editable. La misma migración seedea los 16 proyectos del Excel "Resumen" (mayo 2026) — resuelve `owner_id` / `category_id` por nombre vía LEFT JOIN; si no hay match, `owner_id` queda `null` pero `owner_label` se rellena con el nombre crudo del Excel. Idempotente: salta el insert si ya existe un proyecto con el mismo `title`.
 11. `supabase-migration-15.sql` — parche para BD donde ya se corrió mig-14 antes de añadir `owner_label`. UPDATE puro: rellena `owner_label` por título solo cuando `owner_id is null` y `owner_label` está vacío. Idempotente.
+12. `supabase-migration-16.sql` — calculadora de costo: añade `projects.project_value` (numeric 12,2) y `projects.project_hours` (numeric 8,2). Ambos nullable, con CHECK suaves (valor ≥ 0, horas > 0). La tarifa hora se calcula en cliente como `project_value / project_hours` (no se guarda). UI: sección "Costo" en `NewProjectForm` (`src/pages/Projects.jsx`) con helper que muestra `≈ $X COP/hora` en vivo. `ProjectDetail.jsx` renderiza una pill esmeralda con `$valor · Xh · $X/h` en el header cuando los dos campos están llenos.
+13. `supabase-migration-17.sql` — recordatorios de vencimiento por email. Añade `projects.notification_email` (override opcional). Crea `pro_gestion.notification_log` con UNIQUE(project_id, kind) para idempotencia. Activa `pg_cron` + `pg_net` y registra el job `notify-deadlines-daily` (0 9 * * * UTC) que invoca la edge function `notify-deadlines` con bearer service_role. **Antes de correr la migración**: reemplaza `<PROJECT_REF>` y `<SERVICE_ROLE_JWT>` al final del archivo (o mejor: guarda el JWT en Vault). Kinds emitidos: `5d`, `3d`, `1d`, `due`, `overdue+{1,3,7,14,30}`. Recipient resuelve: `projects.notification_email` → fallback `profiles.email` del owner.
+
+**Edge function `supabase/functions/notify-deadlines/index.ts`** (Deno). Setup manual:
+- `supabase secrets set RESEND_API_KEY=... RESEND_FROM_EMAIL="Pro-Gestión <notify@dominio>"` (Resend free: 100 emails/día).
+- Deploy: `supabase functions deploy notify-deadlines --no-verify-jwt`.
+- Verifica manual: `curl -X POST https://<ref>.supabase.co/functions/v1/notify-deadlines -H "Authorization: Bearer <service_role>"`.
+- Plantilla HTML inline (sin Edge Function dependencies extras). Logs por proyecto van a la respuesta JSON.
+- **Respeta `profiles.notif_email_enabled`** (mig-18): si el owner desactivó emails, salta. Override por `projects.notification_email` ignora el flag (autorización explícita por proyecto).
+
+14. `supabase-migration-18.sql` — refactor audit (bloques 1, 2, 6, 7). Añade:
+    - `activity.tag` (`sistema|avance|riesgo|decision|bloqueo|manual`) + `activity.meta` jsonb. Relaja `activity_write` para permitir `profile_id NULL` (triggers sistema).
+    - `projects.health_override` smallint (1=green, 2=amber, 3=red). Null = computed por `healthSignal()`. Visible vía `effectiveHealth()` en `src/lib/utils.js`.
+    - `profiles.landing_route` text default `/dashboard` (CHECK: `/dashboard|/projects|/team`). Resuelto en `App.jsx::resolveLanding`.
+    - `profiles.notif_email_enabled` + `profiles.notif_inapp_enabled` booleanos default true. Edge function `notify-deadlines` respeta el flag email.
+    - `comments.tag` (avance|riesgo|decision|bloqueo). UI en `Comments.jsx` permite escoger.
+    - **Triggers SECURITY DEFINER** sobre `projects`, `milestones`, `tasks` que graban en `activity` con `kind` semántico (`project_status_change`, `project_owner_change`, `project_date_change`, `project_delivery_change`, `project_contract_update`, `project_create`, `milestone_create`, `milestone_complete/uncomplete`, `task_complete/uncomplete`). `tag='sistema'` para metadata, `tag='avance'` para completion. La bitácora UI vive en `src/components/ActivityFeed.jsx` con tabs Auto/Manual y badges por tag; montada en ProjectDetail bajo Comments.
+15. `supabase-migration-19.sql` — plantillas de hitos. Tabla `pro_gestion.milestone_templates` (`category_id`, `name`, `days_after_start`, `color`, `position`). RPC `apply_milestone_template(p_project_id)` copia los templates de la categoría del proyecto a `milestones` con `target_date = project.start_date + days_after_start`. Idempotente. UI: CRUD en `Admin.jsx::MilestoneTemplatesSection`; banner amarillo en ProjectDetail (`MilestonesEmptyBanner`) cuando el proyecto está activo y no tiene hitos.
+
+**Refactor audit (sin migración):**
+- Owner unificado vía toggle "Tiene cuenta en plataforma" en NewProjectForm + ProjectDetail (`projects.owner_id` o `projects.owner_label`, nunca ambos).
+- `src/lib/utils.js`: `effectiveHealth(p, prog)`, `projectCompleteness(p)`, `PROJECT_CRITICAL_FIELDS`.
+- `src/components/Breadcrumb.jsx` + montaje en Layout (desktop + móvil).
+- `src/components/TeamMembersGrid.jsx` (visible en `/team` solo a `viewAll`): grid carga por miembro + drill-down + reasignación admin.
+- Dashboard widgets riesgo: sin owner, sin fecha fin, sin update >14d (lee `projects.updated_at`), sin hitos.
+- Tabla maestra `Projects.jsx`: nueva col "Salud" + sort por health.
 
 9. `supabase-migration-13.sql` — granularidad de día en fases. Añade `phases.start_day` (smallint 1-7, default 1) y `phases.duration_days` (smallint 1-56, nullable). El cliente posiciona el rectángulo de fase en el Gantt como `((start_week-1)*7 + (start_day-1)) * 28` px y lo dimensiona como `(duration_days ?? duration_weeks*7) * 28` px. Si `duration_days` está NULL se mantiene compat con `duration_weeks`. Drag/resize del rect snappean a día (28px) en lugar de semana.
 

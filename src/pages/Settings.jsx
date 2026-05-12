@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { User, Globe, Lock, Camera, Trash2, Save } from 'lucide-react';
+import { User, Globe, Lock, Camera, Trash2, Save, Home, Bell } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
 import { useStore } from '../lib/store';
@@ -18,6 +18,9 @@ export default function Settings() {
   const showToast = useToast(s => s.show);
   const [name, setName] = useState(profile?.name || '');
   const [avatar, setAvatar] = useState(profile?.avatar || 1);
+  const [landingRoute, setLandingRoute] = useState(profile?.landing_route || '/dashboard');
+  const [notifEmail, setNotifEmail] = useState(profile?.notif_email_enabled ?? true);
+  const [notifInapp, setNotifInapp] = useState(profile?.notif_inapp_enabled ?? true);
   const [pass, setPass] = useState('');
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
@@ -36,6 +39,16 @@ export default function Settings() {
       showToast(t('settings.toast.saved'));
     } catch (e) { showToast(t('common.error') + ': ' + e.message, 'error'); }
     finally { setBusy(false); }
+  };
+
+  // Guarda landing + flags de notificación. Debounced indirectamente vía botón.
+  const savePrefs = async (patch) => {
+    try {
+      await updateProfile(profile.id, patch);
+      await refresh();
+      await refreshProfiles();
+      showToast(t('settings.toast.saved'));
+    } catch (e) { showToast(t('common.error') + ': ' + e.message, 'error'); }
   };
 
   const handlePhoto = async (e) => {
@@ -153,6 +166,62 @@ export default function Settings() {
             <button onClick={() => changeLang('es')} className={`cat-pill ${lang === 'es' ? 'active' : 'bg-ink-100 text-ink-600'}`}>🇪🇸 {t('settings.lang.es')}</button>
             <button onClick={() => changeLang('en')} className={`cat-pill ${lang === 'en' ? 'active' : 'bg-ink-100 text-ink-600'}`}>🇬🇧 {t('settings.lang.en')}</button>
             <button onClick={() => changeLang('pt')} className={`cat-pill ${lang === 'pt' ? 'active' : 'bg-ink-100 text-ink-600'}`}>🇧🇷 {t('settings.lang.pt')}</button>
+          </div>
+        </div>
+
+        {/* LANDING */}
+        <div className="card-light p-7 mb-6" data-stagger>
+          <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest mb-5 flex items-center gap-2">
+            <Home className="w-3.5 h-3.5" /> {t('settings.landing.section')}
+          </h3>
+          <p className="text-[11px] text-ink-500 mb-3">{t('settings.landing.help')}</p>
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { v: '/dashboard', l: t('nav.dashboard') },
+              { v: '/projects', l: t('nav.projects') },
+              { v: '/team', l: t('nav.team') },
+            ].map(opt => (
+              <button
+                key={opt.v}
+                onClick={async () => { setLandingRoute(opt.v); await savePrefs({ landing_route: opt.v }); }}
+                className={`cat-pill ${landingRoute === opt.v ? 'active' : 'bg-ink-100 text-ink-600'}`}
+              >
+                {opt.l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* NOTIFICACIONES */}
+        <div className="card-light p-7 mb-6" data-stagger>
+          <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest mb-5 flex items-center gap-2">
+            <Bell className="w-3.5 h-3.5" /> {t('settings.notif.section')}
+          </h3>
+          <div className="space-y-3">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={notifEmail}
+                onChange={async (e) => { setNotifEmail(e.target.checked); await savePrefs({ notif_email_enabled: e.target.checked }); }}
+                className="accent-violet-600 w-4 h-4"
+              />
+              <div className="flex-1">
+                <div className="text-sm font-bold text-ink-800">{t('settings.notif.email')}</div>
+                <div className="text-[11px] text-ink-500">{t('settings.notif.emailHelp')}</div>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={notifInapp}
+                onChange={async (e) => { setNotifInapp(e.target.checked); await savePrefs({ notif_inapp_enabled: e.target.checked }); }}
+                className="accent-violet-600 w-4 h-4"
+              />
+              <div className="flex-1">
+                <div className="text-sm font-bold text-ink-800">{t('settings.notif.inapp')}</div>
+                <div className="text-[11px] text-ink-500">{t('settings.notif.inappHelp')}</div>
+              </div>
+            </label>
           </div>
         </div>
 

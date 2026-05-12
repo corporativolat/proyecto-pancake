@@ -132,3 +132,37 @@ export async function reorderPhases(items) {
   const { error } = await supabase.rpc('reorder_phases', { items });
   if (error) throw error;
 }
+
+// =============================================================
+// Plantillas de hitos (mig-19)
+// =============================================================
+export async function fetchMilestoneTemplates(categoryId = null) {
+  let q = supabase.from('milestone_templates').select('*').order('position').order('created_at');
+  if (categoryId) q = q.eq('category_id', categoryId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data;
+}
+
+export async function createMilestoneTemplate(payload) {
+  const { data, error } = await supabase.from('milestone_templates').insert(payload).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateMilestoneTemplate(id, patch) {
+  const { error } = await supabase.from('milestone_templates').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteMilestoneTemplate(id) {
+  const { error } = await supabase.from('milestone_templates').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// RPC: aplica plantilla por categoría al proyecto. Devuelve cantidad creados.
+export async function applyMilestoneTemplate(projectId) {
+  const { data, error } = await supabase.rpc('apply_milestone_template', { p_project_id: projectId });
+  if (error) throw error;
+  return data ?? 0;
+}

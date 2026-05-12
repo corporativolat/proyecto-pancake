@@ -717,6 +717,16 @@ body.dark .projects-mockup .pm-badge.warn,
 body.dark .projects-mockup .pm-badge.delay { background: rgba(239,68,68,0.18); color: #fca5a5; border-color: rgba(239,68,68,0.30); }
 
 .projects-mockup .pm-muted { color: #a1a1aa; font-weight: 600; }
+.projects-mockup .pm-health-dot {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.04), 0 0 10px currentColor;
+}
+.projects-mockup .pm-health-green { color: #10b981; background: #10b981; }
+.projects-mockup .pm-health-amber { color: #f59e0b; background: #f59e0b; }
+.projects-mockup .pm-health-red   { color: #ef4444; background: #ef4444; }
+.projects-mockup .pm-health-gray  { color: #a1a1aa; background: #a1a1aa; }
 .projects-mockup .pm-empty {
   text-align: center;
   padding: 60px 20px;
@@ -761,7 +771,70 @@ body.dark .projects-mockup .pm-icon-btn:hover { background: #27272a; color: #c4b
   position: relative;
   overflow: hidden;
   transition: all .25s;
+  text-align: left;
+  font-family: inherit;
 }
+.projects-mockup .pm-stat-card-clickable { cursor: pointer; }
+.projects-mockup .pm-stat-card-clickable:hover { border-color: var(--accent); }
+.projects-mockup .pm-stat-card-active {
+  border-color: var(--accent);
+  background: rgba(124,58,237,0.04);
+  box-shadow: 0 0 0 3px rgba(124,58,237,0.12);
+}
+.projects-mockup .pm-stat-card-active::before { transform: scaleX(1); }
+body.dark .projects-mockup .pm-stat-card-active { background: rgba(124,58,237,0.12); }
+.projects-mockup .pm-filter-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: rgba(124,58,237,0.06);
+  border: 1px solid rgba(124,58,237,0.18);
+  border-radius: 12px;
+}
+body.dark .projects-mockup .pm-filter-chip-row { background: rgba(124,58,237,0.10); border-color: rgba(124,58,237,0.25); }
+.projects-mockup .pm-filter-chip-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #6d28d9;
+  font-weight: 700;
+}
+body.dark .projects-mockup .pm-filter-chip-label { color: #c4b5fd; }
+.projects-mockup .pm-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid rgba(124,58,237,0.30);
+  background: #ffffff;
+  color: #6d28d9;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .15s;
+}
+.projects-mockup .pm-filter-chip:hover { background: #6d28d9; color: #ffffff; }
+.projects-mockup .pm-filter-chip span { font-weight: 900; opacity: .7; }
+body.dark .projects-mockup .pm-filter-chip { background: #18181b; color: #c4b5fd; border-color: rgba(168,85,247,0.40); }
+body.dark .projects-mockup .pm-filter-chip:hover { background: #c4b5fd; color: #18181b; }
+.projects-mockup .pm-filter-chip-clear {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: #71717a;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  font-family: inherit;
+}
+.projects-mockup .pm-filter-chip-clear:hover { color: #ef4444; }
 .projects-mockup .pm-stat-card::before {
   content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
   background: var(--accent-grad); background-size: 200% 100%;

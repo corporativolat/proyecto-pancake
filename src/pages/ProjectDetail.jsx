@@ -6,11 +6,12 @@ import { Draggable } from 'gsap/Draggable';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcPhaseProgress, calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP } from '../lib/utils';
+import { calcPhaseProgress, calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, effectiveHealth, projectCompleteness } from '../lib/utils';
 import Avatar from '../components/Avatar.jsx';
 import Comments from '../components/Comments.jsx';
+import ActivityFeed from '../components/ActivityFeed.jsx';
 import { animateBars, confetti, reduced } from '../lib/motion';
-import { updateProject, deleteProjectById, setProjectMember, createPhase, updatePhase, deletePhase, createTask, updateTask, deleteTask, reorderPhases, createMilestone, updateMilestone, deleteMilestone } from '../lib/data';
+import { updateProject, deleteProjectById, setProjectMember, createPhase, updatePhase, deletePhase, createTask, updateTask, deleteTask, reorderPhases, createMilestone, updateMilestone, deleteMilestone, fetchMilestoneTemplates, applyMilestoneTemplate } from '../lib/data';
 import { uploadAttachment, removeAttachmentFile } from '../lib/storage';
 import { useToast } from '../lib/toast';
 import { askConfirm } from '../lib/confirm.jsx';
@@ -143,6 +144,36 @@ export default function ProjectDetail() {
                 </p>
               );
             })()}
+            {(() => {
+              const val = Number(project.project_value);
+              const hrs = Number(project.project_hours);
+              if (!Number.isFinite(val) || val <= 0 || !Number.isFinite(hrs) || hrs <= 0) return null;
+              const rate = val / hrs;
+              const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
+              return (
+                <div className="mt-2 inline-flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full px-3 py-1 mr-2">
+                  <span title={t('projects.field.value')}>{fmt(val)}</span>
+                  <span className="opacity-50">·</span>
+                  <span title={t('projects.field.hours')} className="tabular">{hrs}h</span>
+                  <span className="opacity-50">·</span>
+                  <span title={t('projects.field.perHour')} className="tabular">{fmt(rate)}{t('projects.field.perHour')}</span>
+                </div>
+              );
+            })()}
+            {(() => {
+              const score = projectCompleteness(project);
+              const cls = score >= 80
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : score >= 50
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : 'bg-red-50 text-red-700 border-red-200';
+              return (
+                <div className={`mt-2 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest border rounded-full px-3 py-1 ${cls}`} title={t('pj.completenessHelp')}>
+                  <span>{t('pj.completeness')}</span>
+                  <span className="tabular">{score}%</span>
+                </div>
+              );
+            })()}
           </div>
           <div className="flex gap-2 items-start flex-wrap">
             <div className="flex flex-col items-start lg:items-end mr-2 flex-1 lg:flex-initial">
@@ -169,18 +200,38 @@ export default function ProjectDetail() {
           <div className="space-y-3">
             <div>
               <DetailLabel label={t('pj.responsibleLabel')} help={PROJECT_FIELD_HELP.owner_id} />
-              <select value={project.owner_id || ''} disabled={!editable} onChange={e => debouncedUpdate('owner_id', e.target.value || null)} className="input-light">
-                <option value="">{project.owner_label ? `(sin cuenta) ${project.owner_label}` : '—'}</option>
-                {profiles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-              {!project.owner_id && (
+              <label className="text-[11px] font-bold text-ink-600 flex items-center gap-2 cursor-pointer select-none mb-1.5">
+                <input
+                  type="checkbox"
+                  checked={!!project.owner_id}
+                  disabled={!editable}
+                  onChange={e => {
+                    if (e.target.checked) {
+                      // switch a "tiene cuenta": pre-selecciono el primer profile y limpio label
+                      debouncedUpdate('owner_label', '');
+                      debouncedUpdate('owner_id', profiles[0]?.id || null);
+                    } else {
+                      // switch a "sin cuenta": limpio owner_id, preservo label
+                      debouncedUpdate('owner_id', null);
+                    }
+                  }}
+                  className="accent-violet-600"
+                />
+                {t('projects.field.ownerHasAccount')}
+              </label>
+              {project.owner_id ? (
+                <select value={project.owner_id} disabled={!editable} onChange={e => debouncedUpdate('owner_id', e.target.value || null)} className="input-light">
+                  <option value="">{t('projects.field.ownerSelectEmpty')}</option>
+                  {profiles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              ) : (
                 <input
                   type="text"
                   value={project.owner_label || ''}
                   disabled={!editable}
                   onChange={e => debouncedUpdate('owner_label', e.target.value)}
-                  placeholder="Nombre del responsable (texto libre)"
-                  className="input-light mt-1.5 text-[11px]"
+                  placeholder={t('projects.field.ownerLabelPlaceholder')}
+                  className="input-light"
                 />
               )}
             </div>
@@ -189,6 +240,27 @@ export default function ProjectDetail() {
               <select value={project.status} disabled={!editable} onChange={e => debouncedUpdate('status', e.target.value)} className="input-light">
                 {STATUSES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
               </select>
+            </div>
+            <div>
+              <DetailLabel label={t('pj.healthLabel')} help={t('pj.healthHelp')} />
+              <div className="flex items-center gap-2">
+                <span className={`status-dot status-${effectiveHealth(project, projProg)}`} />
+                <select
+                  value={project.health_override ?? ''}
+                  disabled={!can('editAll')}
+                  onChange={e => {
+                    const v = e.target.value;
+                    debouncedUpdate('health_override', v === '' ? null : parseInt(v));
+                  }}
+                  className="input-light flex-1"
+                  title={can('editAll') ? t('pj.healthHelp') : t('pj.healthAdminOnly')}
+                >
+                  <option value="">{t('pj.healthAuto')}</option>
+                  <option value="1">{t('pj.healthGreen')}</option>
+                  <option value="2">{t('pj.healthAmber')}</option>
+                  <option value="3">{t('pj.healthRed')}</option>
+                </select>
+              </div>
             </div>
           </div>
           <div>
@@ -271,8 +343,10 @@ export default function ProjectDetail() {
             {project.phases?.map((ph, pIdx) => (
               <PhaseCard key={ph.id} phase={ph} pIdx={pIdx} total={project.phases.length} project={project} editable={editable} profiles={profiles} onChange={refreshProjects} onEditTask={(tk) => setEditingTask({ ...tk, phaseId: ph.id })} onMove={(dir) => movePhase(pIdx, dir)} />
             ))}
+            <MilestonesEmptyBanner project={project} categories={categories} editable={editable} onApplied={refreshProjects} />
             <MilestonesPanel project={project} editable={editable} onChange={refreshProjects} />
             <Comments projectId={project.id} />
+            <ActivityFeed projectId={project.id} compact />
           </>
         );
 
@@ -1076,6 +1150,60 @@ function ExecModal({ project, profiles, onClose }) {
           <button onClick={() => downloadCronograma(project, profiles)} className="btn-primary"><Download className="w-4 h-4" /> {t('pj.exec.downloadPdf')}</button>
           <button onClick={close} className="btn-ghost">{t('pj.exec.close')}</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function MilestonesEmptyBanner({ project, categories, editable, onApplied }) {
+  const showToast = useToast(s => s.show);
+  const { t } = useT();
+  const [hasTpl, setHasTpl] = useState(false);
+  const [applying, setApplying] = useState(false);
+
+  const milestoneCount = project.milestones?.length || 0;
+  const isActive = project.status && project.status !== 'No iniciado' && project.status !== 'Finalizado' && project.status !== 'Entregado';
+  const cat = categories.find(c => c.id === project.category_id);
+
+  useEffect(() => {
+    let alive = true;
+    if (!project.category_id) { setHasTpl(false); return; }
+    fetchMilestoneTemplates(project.category_id)
+      .then(rows => { if (alive) setHasTpl((rows || []).length > 0); })
+      .catch(() => { if (alive) setHasTpl(false); });
+    return () => { alive = false; };
+  }, [project.category_id]);
+
+  if (milestoneCount > 0) return null;
+  if (!isActive) return null;
+
+  const apply = async () => {
+    if (applying) return;
+    setApplying(true);
+    try {
+      const n = await applyMilestoneTemplate(project.id);
+      showToast(n > 0 ? t('pj.tpl.applied').replace('{n}', n) : t('pj.tpl.noneCreated'));
+      onApplied && onApplied();
+    } catch (e) {
+      showToast(t('pj.tpl.error') + ': ' + e.message, 'error');
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <div className="card-light p-5 border-2 border-amber-200 bg-amber-50" data-stagger>
+      <div className="flex items-start gap-3">
+        <span className="text-2xl leading-none">🚩</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-black text-amber-900">{t('pj.tpl.bannerTitle')}</p>
+          <p className="text-[11px] text-amber-800 mt-1">{t('pj.tpl.bannerBody')}</p>
+        </div>
+        {hasTpl && editable && (
+          <button onClick={apply} disabled={applying} className="btn-primary-sm disabled:opacity-60 flex-shrink-0">
+            {applying ? t('pj.tpl.applying') : t('pj.tpl.apply').replace('{cat}', cat?.name || '')}
+          </button>
+        )}
       </div>
     </div>
   );

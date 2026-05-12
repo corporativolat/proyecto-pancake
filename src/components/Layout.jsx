@@ -9,6 +9,7 @@ import { useTheme } from '../lib/theme.jsx';
 import { reduced, staggerIn } from '../lib/motion';
 import { useToast } from '../lib/toast';
 import Avatar from './Avatar.jsx';
+import Breadcrumb from './Breadcrumb.jsx';
 
 export default function Layout({ children, onOpenCmd, onOpenShort }) {
   const { profile, signOut, can } = useAuth();
@@ -163,6 +164,12 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
           <button onClick={toggleTheme} aria-label={t('layout.theme')} className="p-2 rounded-lg hover:bg-ink-100 transition">
             {theme === 'dark' ? <Sun className="w-4 h-4 text-ink-600" /> : <Moon className="w-4 h-4 text-ink-600" />}
           </button>
+        </div>
+        <div className="hidden md:block px-10 pt-4 pb-0 bg-ink-50 border-b border-ink-100 flex-shrink-0">
+          <Breadcrumb compact />
+        </div>
+        <div className="md:hidden px-4 pt-2 pb-1 bg-white border-b border-ink-100 flex-shrink-0">
+          <Breadcrumb compact />
         </div>
         {children}
       </main>

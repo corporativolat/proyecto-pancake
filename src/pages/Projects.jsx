@@ -6,9 +6,10 @@ import { Draggable } from 'gsap/Draggable';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP } from '../lib/utils';
+import { calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, vencimiento, isFinalStatus, effectiveHealth } from '../lib/utils';
 import { reduced } from '../lib/motion';
 import { createProject } from '../lib/data';
+import { uploadContract } from '../lib/storage';
 import { useToast } from '../lib/toast';
 import Avatar from '../components/Avatar.jsx';
 
@@ -17,7 +18,6 @@ if (typeof window !== 'undefined') gsap.registerPlugin(Draggable);
 const DRAFT_KEY = 'proGestion.newProjectDraft';
 
 // ============== Helpers tabla resumen ==============
-const isFinalStatus = (s) => s === 'Entregado' || s === 'Finalizado';
 
 function statusSlug(s) {
   if (!s) return '';
@@ -40,16 +40,6 @@ function interp(s, n) {
   return (s || '').replace(/\{n\}/g, n);
 }
 
-function vencimiento(pj) {
-  if (isFinalStatus(pj.status)) return { days: 0, kind: 'done' };
-  if (!pj.projected_end_date) return { days: null, kind: 'none' };
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const fin = new Date(pj.projected_end_date + 'T00:00:00');
-  const days = Math.round((fin - today) / 86400000);
-  if (days < 0) return { days: Math.abs(days), kind: 'overdue' };
-  if (days <= 7) return { days, kind: 'soon' };
-  return { days, kind: 'ok' };
-}
 
 
 export default function Projects() {
@@ -67,6 +57,7 @@ export default function Projects() {
   const [filterCat, setFilterCat] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
+  const [filterOverdue, setFilterOverdue] = useState(false);
   const [sortBy, setSortBy] = useState('start_date');
   const [sortDir, setSortDir] = useState('desc');
 
@@ -107,6 +98,7 @@ export default function Projects() {
     let list = visiblePool;
     if (filterCat) list = list.filter(p => p.category_id === filterCat);
     if (filterStatus) list = list.filter(p => p.status === filterStatus);
+    if (filterOverdue) list = list.filter(p => vencimiento(p).kind === 'overdue');
     if (filterOwner) {
       if (filterOwner === '__none') list = list.filter(p => !p.owner_id);
       else list = list.filter(p => p.owner_id === filterOwner);
@@ -135,6 +127,12 @@ export default function Projects() {
           av = a.status || ''; bv = b.status || ''; break;
         case 'progress':
           av = calcProjectProgress(a); bv = calcProjectProgress(b); break;
+        case 'health': {
+          const order = { red: 0, amber: 1, gray: 2, green: 3 };
+          av = order[effectiveHealth(a, calcProjectProgress(a))] ?? 9;
+          bv = order[effectiveHealth(b, calcProjectProgress(b))] ?? 9;
+          break;
+        }
         case 'owner':
           av = profiles.find(u => u.id === a.owner_id)?.name || a.owner_label || '';
           bv = profiles.find(u => u.id === b.owner_id)?.name || b.owner_label || '';
@@ -157,7 +155,31 @@ export default function Projects() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return list;
-  }, [visiblePool, profiles, categories, filterCat, filterStatus, filterOwner, search, sortBy, sortDir]);
+  }, [visiblePool, profiles, categories, filterCat, filterStatus, filterOwner, filterOverdue, search, sortBy, sortDir]);
+
+  // Handlers stat cards: click toggle filtro / reset.
+  const resetAllFilters = () => {
+    setFilterCat(''); setFilterStatus(''); setFilterOwner(''); setFilterOverdue(false); setSearch('');
+  };
+  const handleStatClick = (kind) => {
+    if (kind === 'total') { resetAllFilters(); return; }
+    if (kind === 'inDev') {
+      if (filterStatus === 'En Desarrollo' && !filterOverdue && !filterCat && !filterOwner) setFilterStatus('');
+      else { resetAllFilters(); setFilterStatus('En Desarrollo'); }
+      return;
+    }
+    if (kind === 'overdue') {
+      if (filterOverdue && !filterStatus && !filterCat && !filterOwner) setFilterOverdue(false);
+      else { resetAllFilters(); setFilterOverdue(true); }
+    }
+  };
+  const isStatActive = (kind) => {
+    if (kind === 'total') return !filterCat && !filterStatus && !filterOwner && !filterOverdue && !search;
+    if (kind === 'inDev') return filterStatus === 'En Desarrollo';
+    if (kind === 'overdue') return filterOverdue;
+    return false;
+  };
+  const hasAnyFilter = !!(filterCat || filterStatus || filterOwner || filterOverdue || search);
 
   // Stats arriba
   const stats = useMemo(() => {
@@ -233,11 +255,45 @@ export default function Projects() {
         {showGrid && (
           <>
             <div className="pm-stats">
-              <StatCard label={t('projects.stat.total')} value={stats.total} meta={interp(t('projects.stat.completed'), stats.finalized)} />
-              <StatCard label={t('projects.stat.inDev')} value={stats.enDes} meta={stats.total ? interp(t('projects.stat.ofPortfolio'), Math.round(stats.enDes / stats.total * 100)) : '—'} />
+              <StatCard label={t('projects.stat.total')} value={stats.total} meta={interp(t('projects.stat.completed'), stats.finalized)} onClick={() => handleStatClick('total')} active={isStatActive('total')} />
+              <StatCard label={t('projects.stat.inDev')} value={stats.enDes} meta={stats.total ? interp(t('projects.stat.ofPortfolio'), Math.round(stats.enDes / stats.total * 100)) : '—'} onClick={() => handleStatClick('inDev')} active={isStatActive('inDev')} />
               <StatCard label={t('projects.stat.avgProgress')} value={`${stats.avgCump}%`} meta={t('projects.stat.overTotal')} color={stats.avgCump >= 70 ? '#10b981' : stats.avgCump >= 40 ? '#f59e0b' : '#ef4444'} />
-              <StatCard label={t('projects.stat.overdue')} value={stats.overdue} meta={stats.overdue ? t('projects.stat.needsAttention') : t('projects.stat.onTrack')} color={stats.overdue ? '#ef4444' : undefined} />
+              <StatCard label={t('projects.stat.overdue')} value={stats.overdue} meta={stats.overdue ? t('projects.stat.needsAttention') : t('projects.stat.onTrack')} color={stats.overdue ? '#ef4444' : undefined} onClick={() => handleStatClick('overdue')} active={isStatActive('overdue')} />
             </div>
+
+            {hasAnyFilter && (
+              <div className="pm-filter-chip-row">
+                <span className="pm-filter-chip-label">{t('projects.activeFilters')}:</span>
+                {filterOverdue && (
+                  <button className="pm-filter-chip" onClick={() => setFilterOverdue(false)}>
+                    {t('projects.stat.overdue')} <span aria-hidden>×</span>
+                  </button>
+                )}
+                {filterStatus && (
+                  <button className="pm-filter-chip" onClick={() => setFilterStatus('')}>
+                    {filterStatus} <span aria-hidden>×</span>
+                  </button>
+                )}
+                {filterCat && (
+                  <button className="pm-filter-chip" onClick={() => setFilterCat('')}>
+                    {categories.find(c => c.id === filterCat)?.name || filterCat} <span aria-hidden>×</span>
+                  </button>
+                )}
+                {filterOwner && (
+                  <button className="pm-filter-chip" onClick={() => setFilterOwner('')}>
+                    {filterOwner === '__none' ? t('projects.unassigned') : (profiles.find(u => u.id === filterOwner)?.name || filterOwner)} <span aria-hidden>×</span>
+                  </button>
+                )}
+                {search && (
+                  <button className="pm-filter-chip" onClick={() => setSearch('')}>
+                    “{search}” <span aria-hidden>×</span>
+                  </button>
+                )}
+                <button className="pm-filter-chip-clear" onClick={resetAllFilters}>
+                  {t('projects.clearAll')}
+                </button>
+              </div>
+            )}
 
             <div className="pm-filters">
               <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
@@ -274,6 +330,7 @@ export default function Projects() {
                     <Th k="category" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.type')}</Th>
                     <Th k="client_lead" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.dependency')}</Th>
                     <Th k="status" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.status')}</Th>
+                    <Th k="health" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.health')}</Th>
                     <Th k="progress" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.progress')}</Th>
                     <Th k="owner" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.responsible')}</Th>
                     <Th k="start_date" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.start')}</Th>
@@ -306,6 +363,9 @@ export default function Projects() {
                           <span className={`pm-badge estado-${statusSlug(p.status)}`}>
                             <span className="pm-badge-dot" />{p.status || '—'}
                           </span>
+                        </td>
+                        <td>
+                          <span className={`pm-health-dot pm-health-${effectiveHealth(p, prog)}`} title={effectiveHealth(p, prog)} />
                         </td>
                         <td style={{ minWidth: 130 }}>
                           <div className="pm-progress-label">{prog}%</div>
@@ -376,13 +436,15 @@ function Th({ k, sortBy, sortDir, toggleSort, children }) {
   );
 }
 
-function StatCard({ label, value, meta, color }) {
+function StatCard({ label, value, meta, color, onClick, active }) {
+  const cls = `pm-stat-card${onClick ? ' pm-stat-card-clickable' : ''}${active ? ' pm-stat-card-active' : ''}`;
+  const Tag = onClick ? 'button' : 'div';
   return (
-    <div className="pm-stat-card">
+    <Tag type={onClick ? 'button' : undefined} onClick={onClick} className={cls}>
       <div className="pm-stat-label">{label}</div>
       <div className="pm-stat-value" style={color ? { color } : undefined}>{value}</div>
       <div className="pm-stat-meta">{meta}</div>
-    </div>
+    </Tag>
   );
 }
 
@@ -400,11 +462,20 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
     status: 'No iniciado',
     goal: '',
     owner_id: defaultOwnerId || (profiles[0]?.id || ''),
+    owner_label: '',
     start_date: today,
     projected_end_date: '',
     delivery_date: '',
     contract_url: '',
-    observation: ''
+    observation: '',
+    project_value: '',
+    project_hours: '',
+    notification_email: ''
+  });
+  // Owner unificado: ON → usa owner_id, OFF → usa owner_label (responsable sin cuenta).
+  const [ownerHasAccount, setOwnerHasAccount] = useState(() => {
+    if (!initialForm) return true;
+    return !!initialForm.owner_id;
   });
 
   useEffect(() => {
@@ -458,12 +529,42 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
 
   const set = (k, v) => setForm(s => ({ ...s, [k]: v }));
 
-  const submit = () => {
+  const [contractFile, setContractFile] = useState(null);
+  const [uploadingContract, setUploadingContract] = useState(false);
+
+  const submit = async () => {
     if (!form.title.trim()) { showToast(t('projects.error.titleRequired'), 'error'); return; }
-    if (!form.owner_id) { showToast(t('projects.error.ownerRequired'), 'error'); return; }
+    if (ownerHasAccount && !form.owner_id) { showToast(t('projects.error.ownerRequired'), 'error'); return; }
+    if (!ownerHasAccount && !form.owner_label.trim()) { showToast(t('projects.error.ownerLabelRequired'), 'error'); return; }
     if (form.projected_end_date && form.start_date && form.projected_end_date < form.start_date) {
       showToast(t('projects.error.dateInvalid'), 'error'); return;
     }
+    // Convertir strings vacíos a null para columnas numeric.
+    const toNum = v => {
+      if (v === '' || v === null || v === undefined) return null;
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    // Si el user adjuntó un archivo de contrato, subirlo ahora. La URL
+    // resultante reemplaza/llena `contract_url`. defaultOwnerId == auth.uid()
+    // (Projects.jsx siempre lo pasa así) y el path empieza con uid → cumple RLS.
+    let contractUrl = form.contract_url.trim();
+    if (contractFile) {
+      if (!defaultOwnerId) { showToast(t('projects.error.contractUpload'), 'error'); return; }
+      try {
+        setUploadingContract(true);
+        const slot = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `tmp-${Date.now()}`;
+        const res = await uploadContract(defaultOwnerId, slot, contractFile);
+        contractUrl = res.url;
+      } catch (e) {
+        showToast(t('projects.error.contractUpload') + ': ' + e.message, 'error');
+        return;
+      } finally {
+        setUploadingContract(false);
+      }
+    }
+
     onSubmit({
       title: form.title.trim(),
       company: form.company.trim(),
@@ -471,13 +572,27 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
       client_lead: form.client_lead.trim(),
       status: form.status,
       goal: form.goal.trim(),
-      owner_id: form.owner_id,
+      owner_id: ownerHasAccount ? form.owner_id : null,
+      owner_label: ownerHasAccount ? '' : form.owner_label.trim(),
       start_date: form.start_date || null,
       projected_end_date: form.projected_end_date || null,
       delivery_date: form.delivery_date || null,
-      contract_url: form.contract_url.trim(),
-      observation: form.observation.trim()
+      contract_url: contractUrl,
+      observation: form.observation.trim(),
+      project_value: toNum(form.project_value),
+      project_hours: toNum(form.project_hours),
+      notification_email: form.notification_email.trim() || null
     });
+  };
+
+  // Tarifa /h en vivo (no se guarda).
+  const _val = parseFloat(form.project_value);
+  const _hrs = parseFloat(form.project_hours);
+  const hourlyRate = (Number.isFinite(_val) && _val > 0 && Number.isFinite(_hrs) && _hrs > 0)
+    ? _val / _hrs : null;
+  const fmtMoney = (n) => {
+    if (!Number.isFinite(n)) return '—';
+    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
   };
 
   const selectedCat = categories.find(c => c.id === form.category_id);
@@ -557,14 +672,41 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
             <input value={form.client_lead} onChange={e => set('client_lead', e.target.value)} placeholder={t('projects.field.dependencyPlaceholder')} className="input-light" />
           </NewField>
           <NewField label={t('projects.field.responsible')} help={PROJECT_FIELD_HELP.owner_id}>
-            <select
-              value={form.owner_id}
-              onChange={e => set('owner_id', e.target.value)}
-              disabled={lockOwner}
-              className="input-light disabled:opacity-70 disabled:cursor-not-allowed"
-            >
-              {(lockOwner ? profiles.filter(u => u.id === defaultOwnerId) : profiles).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] font-bold text-ink-600 flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={ownerHasAccount}
+                  disabled={lockOwner}
+                  onChange={e => {
+                    const next = e.target.checked;
+                    setOwnerHasAccount(next);
+                    if (next) set('owner_label', '');
+                    else set('owner_id', '');
+                  }}
+                  className="accent-violet-600"
+                />
+                {t('projects.field.ownerHasAccount')}
+              </label>
+            </div>
+            {ownerHasAccount ? (
+              <select
+                value={form.owner_id}
+                onChange={e => set('owner_id', e.target.value)}
+                disabled={lockOwner}
+                className="input-light disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                <option value="">{t('projects.field.ownerSelectEmpty')}</option>
+                {(lockOwner ? profiles.filter(u => u.id === defaultOwnerId) : profiles).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            ) : (
+              <input
+                value={form.owner_label}
+                onChange={e => set('owner_label', e.target.value)}
+                placeholder={t('projects.field.ownerLabelPlaceholder')}
+                className="input-light"
+              />
+            )}
             {lockOwner && (
               <p className="mt-1.5 text-[11px] text-ink-500 italic leading-snug">
                 {t('projects.field.responsibleNote')}
@@ -572,6 +714,16 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
             )}
           </NewField>
         </div>
+
+        <NewField label={t('projects.field.notifyEmail')} help={t('projects.field.notifyEmailHelp')}>
+          <input
+            type="email"
+            value={form.notification_email}
+            onChange={e => set('notification_email', e.target.value)}
+            placeholder="encargado@empresa.com"
+            className="input-light"
+          />
+        </NewField>
 
         <NewField label={t('projects.field.status')} help={PROJECT_FIELD_HELP.status}>
           <select value={form.status} onChange={e => set('status', e.target.value)} className="input-light">
@@ -595,8 +747,85 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
           </NewField>
         </div>
 
-        <NewField label={t('projects.field.contract')} help={PROJECT_FIELD_HELP.contract_url}>
-          <input value={form.contract_url} onChange={e => set('contract_url', e.target.value)} placeholder={t('projects.field.contractPlaceholder')} className="input-light" />
+        <div className="rounded-2xl border border-violet-100 bg-violet-50/40 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-black text-violet-700 uppercase tracking-widest">{t('projects.field.costSection')}</p>
+            {hourlyRate != null && (
+              <span className="text-[11px] font-bold text-violet-700 bg-white border border-violet-200 rounded-full px-2.5 py-1 tabular">
+                ≈ {fmtMoney(hourlyRate)} {t('projects.field.perHour')}
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-ink-500 mb-3">{t('projects.field.costHelp')}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <NewField label={t('projects.field.value')}>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                inputMode="decimal"
+                value={form.project_value}
+                onChange={e => set('project_value', e.target.value)}
+                placeholder="10000000"
+                className="input-light tabular"
+              />
+            </NewField>
+            <NewField label={t('projects.field.hours')}>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                inputMode="decimal"
+                value={form.project_hours}
+                onChange={e => set('project_hours', e.target.value)}
+                placeholder="100"
+                className="input-light tabular"
+              />
+            </NewField>
+          </div>
+        </div>
+
+        <NewField label={t('projects.field.contract')} help={t('projects.field.contractOrUpload')}>
+          <div className="space-y-2">
+            <input
+              value={form.contract_url}
+              onChange={e => { set('contract_url', e.target.value); if (contractFile) setContractFile(null); }}
+              placeholder={t('projects.field.contractPlaceholder')}
+              className="input-light"
+              disabled={!!contractFile}
+            />
+            <div className="flex items-center gap-2">
+              <label className={`btn-soft cursor-pointer ${uploadingContract ? 'opacity-60 pointer-events-none' : ''}`}>
+                📎 {contractFile ? t('projects.field.contractChange') : t('projects.field.contractUpload')}
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp,.txt,.csv"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      setContractFile(f);
+                      set('contract_url', '');
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              {contractFile && (
+                <>
+                  <span className="text-[11px] font-bold text-violet-700 truncate flex-1">
+                    {contractFile.name} <span className="text-ink-400 font-medium">({Math.round(contractFile.size / 1024)} KB)</span>
+                  </span>
+                  <button type="button" onClick={() => setContractFile(null)} className="btn-ghost text-red-600 hover:text-red-700 text-[11px]">
+                    {t('projects.field.contractRemove')}
+                  </button>
+                </>
+              )}
+              {!contractFile && form.contract_url && /^https?:\/\//i.test(form.contract_url) && (
+                <a href={form.contract_url} target="_blank" rel="noreferrer" className="btn-soft text-[10px]">↗ {t('projects.field.contractOpen')}</a>
+              )}
+            </div>
+          </div>
         </NewField>
 
         <NewField label={t('projects.field.observation')} help={PROJECT_FIELD_HELP.observation}>
@@ -611,7 +840,9 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
           </button>
         )}
         <button onClick={onClose} className="btn-ghost">{t('projects.close')}</button>
-        <button onClick={submit} className="btn-primary">{t('projects.create')}</button>
+        <button onClick={submit} disabled={uploadingContract} className="btn-primary disabled:opacity-60 disabled:cursor-wait">
+          {uploadingContract ? t('projects.uploadingContract') : t('projects.create')}
+        </button>
       </div>
     </div>
   );
