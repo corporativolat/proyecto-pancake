@@ -204,8 +204,8 @@ export default function Dashboard() {
                         <td className="px-6 py-4">{cat ? <span className="text-[10px] font-bold px-2.5 py-1 rounded-full" style={{ background: cat.color + '1a', color: cat.color }}>{cat.name}</span> : '-'}</td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
-                            <Avatar user={owner} size={28} />
-                            <span className="text-[11px] font-semibold text-ink-600">{owner?.name || '-'}</span>
+                            <Avatar user={owner || { name: pj.owner_label || '?' }} size={28} />
+                            <span className="text-[11px] font-semibold text-ink-600">{owner?.name || pj.owner_label || '-'}</span>
                           </div>
                         </td>
                         <td className="px-6 py-4"><span className="px-3 py-1 bg-ink-50 border border-ink-100 rounded-full text-[10px] font-bold text-ink-600">{pj.status}</span></td>

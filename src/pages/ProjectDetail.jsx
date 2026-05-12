@@ -169,9 +169,20 @@ export default function ProjectDetail() {
           <div className="space-y-3">
             <div>
               <DetailLabel label={t('pj.responsibleLabel')} help={PROJECT_FIELD_HELP.owner_id} />
-              <select value={project.owner_id || ''} disabled={!editable} onChange={e => debouncedUpdate('owner_id', e.target.value)} className="input-light">
+              <select value={project.owner_id || ''} disabled={!editable} onChange={e => debouncedUpdate('owner_id', e.target.value || null)} className="input-light">
+                <option value="">{project.owner_label ? `(sin cuenta) ${project.owner_label}` : '—'}</option>
                 {profiles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
+              {!project.owner_id && (
+                <input
+                  type="text"
+                  value={project.owner_label || ''}
+                  disabled={!editable}
+                  onChange={e => debouncedUpdate('owner_label', e.target.value)}
+                  placeholder="Nombre del responsable (texto libre)"
+                  className="input-light mt-1.5 text-[11px]"
+                />
+              )}
             </div>
             <div>
               <DetailLabel label={t('pj.status')} help={PROJECT_FIELD_HELP.status} />

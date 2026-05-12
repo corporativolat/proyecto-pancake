@@ -10,7 +10,10 @@ export const calcPhaseProgress = (phase) => {
   return Math.round((phase.tasks.filter(t => t.completed).length / phase.tasks.length) * 100);
 };
 export const calcProjectProgress = (project) => {
-  if (!project?.phases?.length) return 0;
+  const totalTasks = (project?.phases || []).reduce((a, ph) => a + (ph.tasks?.length || 0), 0);
+  if (totalTasks === 0) {
+    return Number.isFinite(project?.manual_progress) ? project.manual_progress : 0;
+  }
   return Math.round(project.phases.reduce((a, ph) => a + calcPhaseProgress(ph), 0) / project.phases.length);
 };
 

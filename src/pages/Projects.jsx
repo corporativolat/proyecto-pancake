@@ -184,8 +184,8 @@ export default function Projects() {
                   </div>
                   <div className="flex items-center justify-between pt-4 border-t border-ink-100">
                     <div className="flex items-center gap-2">
-                      {owner && <Avatar user={owner} size={28} />}
-                      <span className="text-[11px] font-semibold text-ink-600">{owner?.name || t('projects.noLeader')}</span>
+                      {owner ? <Avatar user={owner} size={28} /> : <Avatar user={{ name: pj.owner_label || '?' }} size={28} />}
+                      <span className="text-[11px] font-semibold text-ink-600">{owner?.name || pj.owner_label || t('projects.noLeader')}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-[10px] font-semibold text-ink-500 tabular">
                       <CheckSquare className="w-3 h-3" />

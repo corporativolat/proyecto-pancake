@@ -62,7 +62,7 @@ export function downloadCronograma(project, profiles = []) {
   const meta = [];
   if (project.company) meta.push(`Cliente: ${project.company}`);
   if (project.status) meta.push(`Estado: ${project.status}`);
-  const owner = profMap.get(project.owner_id);
+  const owner = profMap.get(project.owner_id) || project.owner_label;
   if (owner) meta.push(`Líder: ${owner}`);
   if (project.start_date) meta.push(`Inicio: ${project.start_date}`);
   if (project.projected_end_date) meta.push(`Fin proyectado: ${project.projected_end_date}`);
