@@ -42,7 +42,7 @@ export default function ProjectDetail() {
   const toggleHeader = () => {
     setHeaderCollapsed(v => {
       const nv = !v;
-      try { localStorage.setItem('pj-header-collapsed', nv ? '1' : '0'); } catch {}
+      try { localStorage.setItem('pj-header-collapsed', nv ? '1' : '0'); } catch { /* noop */ }
       return nv;
     });
   };

@@ -5,10 +5,18 @@ import { supabase } from './supabase';
 const AuthCtx = createContext(null);
 
 const PERMS = {
-  admin:   { viewAll: true,  createProject: true,  editAll: true,  deleteProject: true,  manageUsers: true,  manageCategories: true,  viewKPIs: true },
-  gerente: { viewAll: true,  createProject: true,  editAll: true,  deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: true },
-  miembro: { viewAll: false, createProject: true,  editAll: false, deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: false }
+  super_admin: { viewAll: true,  createProject: true,  editAll: true,  deleteProject: true,  manageUsers: true,  manageCategories: true,  viewKPIs: true, manageClients: true, manageRoles: true, staff: true },
+  admin:       { viewAll: true,  createProject: true,  editAll: true,  deleteProject: true,  manageUsers: true,  manageCategories: true,  viewKPIs: true, manageClients: true, manageRoles: false, staff: true },
+  gerente:     { viewAll: true,  createProject: true,  editAll: true,  deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: true, manageClients: false, manageRoles: false, staff: true },
+  miembro:     { viewAll: false, createProject: true,  editAll: false, deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: false, manageClients: false, manageRoles: false, staff: true },
+  cliente:     { viewAll: false, createProject: false, editAll: false, deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: false, manageClients: false, manageRoles: false, staff: false, clientPortal: true }
 };
+
+export const CLIENT_ROLE = 'cliente';
+export const STAFF_ROLES = ['super_admin', 'admin', 'gerente', 'miembro'];
+
+export function isClientRole(role) { return role === CLIENT_ROLE; }
+export function isStaffRole(role) { return STAFF_ROLES.includes(role); }
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
@@ -41,9 +49,11 @@ export function AuthProvider({ children }) {
   const signOut = async () => { await supabase.auth.signOut(); };
 
   const can = (perm) => !!(profile && PERMS[profile.role]?.[perm]);
+  const isClient = !!profile && isClientRole(profile.role);
+  const isStaff = !!profile && isStaffRole(profile.role);
 
   return (
-    <AuthCtx.Provider value={{ session, profile, loading, signIn, signUp, signOut, can, refresh: () => session && supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle().then(({data}) => setProfile(data)) }}>
+    <AuthCtx.Provider value={{ session, profile, loading, signIn, signUp, signOut, can, isClient, isStaff, refresh: () => session && supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle().then(({data}) => setProfile(data)) }}>
       {children}
     </AuthCtx.Provider>
   );

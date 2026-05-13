@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { useAuth } from './lib/auth.jsx';
 import { useStore } from './lib/store';
@@ -22,6 +22,16 @@ const Admin = lazy(() => import('./pages/Admin.jsx'));
 const AdminReports = lazy(() => import('./pages/AdminReports.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 
+// Portal cliente (lazy)
+const PortalLogin   = lazy(() => import('./pages/portal/PortalLogin.jsx'));
+const PortalLayout  = lazy(() => import('./pages/portal/PortalLayout.jsx'));
+const PortalDashboard     = lazy(() => import('./pages/portal/PortalDashboard.jsx'));
+const PortalProjects      = lazy(() => import('./pages/portal/PortalProjects.jsx'));
+const PortalProjectDetail = lazy(() => import('./pages/portal/PortalProjectDetail.jsx'));
+const PortalCalendar      = lazy(() => import('./pages/portal/PortalCalendar.jsx'));
+const PortalDocuments     = lazy(() => import('./pages/portal/PortalDocuments.jsx'));
+const PortalProfile       = lazy(() => import('./pages/portal/PortalProfile.jsx'));
+
 const PageFallback = () => (
   <div className="flex-1 flex items-center justify-center text-ink-400 font-bold tracking-widest text-xs animate-pulse">CARGANDO…</div>
 );
@@ -37,23 +47,27 @@ function resolveLanding(profile, can) {
 }
 
 export default function App() {
-  const { session, profile, loading, can } = useAuth();
+  const { session, profile, loading, can, isClient, isStaff } = useAuth();
   const refreshAll = useStore(s => s.refreshAll);
   const refreshProjects = useStore(s => s.refreshProjects);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [shortOpen, setShortOpen] = useState(false);
+  const location = useLocation();
+  const onPortalUrl = location.pathname.startsWith('/portal');
 
   useEffect(() => {
     if (!session || !profile) return;
+    // Cliente NO necesita catálogo global (profiles/categories/projects de todos)
+    if (isClient) return;
     let cancelled = false;
     (async () => { if (!cancelled) await refreshAll(); })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, profile?.id, refreshAll]);
+  }, [session?.user?.id, profile?.id, refreshAll, isClient]);
 
   // Realtime: refresh projects on changes (debounced para amortiguar ráfagas)
   useEffect(() => {
-    if (!session) return;
+    if (!session || isClient) return;
     let timer = null;
     const trigger = () => {
       clearTimeout(timer);
@@ -66,7 +80,7 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'milestones' }, trigger)
       .subscribe();
     return () => { clearTimeout(timer); supabase.removeChannel(ch); };
-  }, [session, refreshProjects]);
+  }, [session, refreshProjects, isClient]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -99,8 +113,47 @@ export default function App() {
     return (
       <ThemeProvider>
         <I18nProvider>
-          <Login />
+          <Suspense fallback={<PageFallback />}>
+            {onPortalUrl ? <PortalLogin /> : <Login />}
+          </Suspense>
           <Toast />
+        </I18nProvider>
+      </ThemeProvider>
+    );
+  }
+
+  // Rama CLIENTE: portal aislado. Staff URLs reenvían a /portal.
+  if (isClient) {
+    return (
+      <ThemeProvider>
+        <I18nProvider>
+          <Suspense fallback={<PageFallback />}>
+            <PortalLayout>
+              <Routes>
+                <Route path="/portal" element={<PortalDashboard />} />
+                <Route path="/portal/projects" element={<PortalProjects />} />
+                <Route path="/portal/projects/:id" element={<PortalProjectDetail />} />
+                <Route path="/portal/calendar" element={<PortalCalendar />} />
+                <Route path="/portal/documents" element={<PortalDocuments />} />
+                <Route path="/portal/profile" element={<PortalProfile />} />
+                {/* Cualquier ruta fuera de /portal cae a /portal */}
+                <Route path="*" element={<Navigate to="/portal" replace />} />
+              </Routes>
+            </PortalLayout>
+          </Suspense>
+          <Toast />
+          <ConfirmHost />
+        </I18nProvider>
+      </ThemeProvider>
+    );
+  }
+
+  // Rama STAFF: si entró por /portal/*, redirigir a landing staff.
+  if (isStaff && onPortalUrl) {
+    return (
+      <ThemeProvider>
+        <I18nProvider>
+          <Navigate to={resolveLanding(profile, can)} replace />
         </I18nProvider>
       </ThemeProvider>
     );
