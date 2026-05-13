@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, FolderKanban, ShieldCheck, Plus, LogOut, Settings as SettingsIcon, Search, Moon, Sun, Menu, Briefcase } from 'lucide-react';
+import NotifBell from './NotifBell.jsx';
 import gsap from 'gsap';
 import { useAuth } from '../lib/auth.jsx';
 import { useStore } from '../lib/store';
@@ -131,6 +132,7 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
             </div>
           </button>
           <div className="flex items-center gap-2 mt-2">
+            <NotifBell />
             <button onClick={toggleTheme} title={t('layout.theme')} className="theme-toggle">
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
