@@ -21,7 +21,13 @@ export async function fetchProjects() {
 }
 
 export async function fetchProfiles() {
-  const { data, error } = await supabase.from('profiles').select('*').order('created_at');
+  // Excluye clientes — staff y portal cliente viven separados.
+  // Para listar clientes: src/lib/clients.js::fetchClients.
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .neq('role', 'cliente')
+    .order('created_at');
   if (error) throw error;
   return data;
 }

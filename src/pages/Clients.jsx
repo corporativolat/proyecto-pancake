@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users, Plus, Search, Mail, Phone, Building2, Pause, Play, Briefcase, X } from 'lucide-react';
+import { Users, Plus, Search, Mail, Phone, Building2, Pause, Play, Briefcase, X, Copy, Link as LinkIcon, Check } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import { fetchClients, createClient, updateClient, clientProjects, assignClientToProject } from '../lib/clients';
 import { useStore } from '../lib/store';
@@ -70,6 +70,9 @@ export default function Clients() {
         </div>
       </header>
 
+      <PortalUrlCard />
+
+
       {loading ? <div className="text-ink-400">Cargando…</div> : filtered.length === 0 ? (
         <div className="bg-white border rounded-2xl p-10 text-center text-ink-400">
           <Users className="w-10 h-10 mx-auto mb-3 opacity-40" />
@@ -118,6 +121,8 @@ function NewClientModal({ onClose, onCreated }) {
   const showToast = useToast(s => s.show);
   const [form, setForm] = useState({ name: '', email: '', phone: '', company: '', password: '' });
   const [busy, setBusy] = useState(false);
+  const [created, setCreated] = useState(null);
+  const portalUrl = `${window.location.origin}/portal`;
 
   const genPwd = () => {
     const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#';
@@ -132,11 +137,30 @@ function NewClientModal({ onClose, onCreated }) {
     try {
       await createClient(form);
       showToast('Cliente creado', 'success');
-      onCreated();
+      setCreated({ name: form.name, email: form.email, password: form.password });
     } catch (e) {
       showToast('Error: ' + e.message, 'error');
     } finally { setBusy(false); }
   };
+
+  const close = () => {
+    if (created) onCreated();
+    else onClose();
+  };
+
+  if (created) {
+    return (
+      <Modal onClose={close} title="Cliente creado ✓" footer={<></>}>
+        <CredentialsSummary
+          name={created.name}
+          email={created.email}
+          password={created.password}
+          portalUrl={portalUrl}
+          onDone={onCreated}
+        />
+      </Modal>
+    );
+  }
 
   return (
     <Modal onClose={onClose} title="Nuevo cliente" footer={<></>}>
@@ -152,6 +176,9 @@ function NewClientModal({ onClose, onCreated }) {
           </div>
           <p className="text-[10px] text-ink-400 mt-1">El cliente podrá cambiarla en su primer ingreso.</p>
         </Field>
+        <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 text-[11px] text-ink-600">
+          Al crear el cliente verás el enlace del portal y las credenciales listas para copiar y enviar.
+        </div>
         <div className="flex gap-2 pt-2">
           <button type="button" onClick={onClose} className="btn-soft flex-1 justify-center">Cancelar</button>
           <button type="submit" disabled={busy} className="btn-primary flex-1 justify-center disabled:opacity-60">
@@ -160,6 +187,74 @@ function NewClientModal({ onClose, onCreated }) {
         </div>
       </form>
     </Modal>
+  );
+}
+
+function CredentialsSummary({ name, email, password, portalUrl, onDone }) {
+  const showToast = useToast(s => s.show);
+  const [copied, setCopied] = useState(false);
+
+  const fullMessage = `Hola ${name},
+
+Te creamos un acceso al portal de Pancake.
+
+🔗 Portal: ${portalUrl}
+👤 Email: ${email}
+🔑 Contraseña temporal: ${password}
+
+Te recomendamos cambiar la contraseña al ingresar por primera vez.`;
+
+  const copy = async (text, label) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(`${label} copiado`, 'success');
+    } catch {
+      showToast('No se pudo copiar', 'error');
+    }
+  };
+
+  const copyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(fullMessage);
+      setCopied(true);
+      showToast('Mensaje listo para enviar', 'success');
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      showToast('No se pudo copiar', 'error');
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[12px] text-emerald-800">
+        Guarda estos datos: la contraseña no se mostrará de nuevo. Envíala al cliente por un canal seguro.
+      </div>
+
+      <CredentialRow label="Portal" value={portalUrl} onCopy={() => copy(portalUrl, 'Enlace')} />
+      <CredentialRow label="Email" value={email} onCopy={() => copy(email, 'Email')} />
+      <CredentialRow label="Contraseña" value={password} mono onCopy={() => copy(password, 'Contraseña')} />
+
+      <div className="pt-2 border-t">
+        <button onClick={copyAll} className="btn-primary w-full justify-center">
+          {copied ? <><Check className="w-4 h-4" /> Mensaje copiado</> : <><Copy className="w-4 h-4" /> Copiar mensaje listo para enviar</>}
+        </button>
+        <p className="text-[10px] text-ink-400 mt-2 text-center">Incluye saludo + enlace + credenciales.</p>
+      </div>
+
+      <button onClick={onDone} className="btn-soft w-full justify-center">Cerrar</button>
+    </div>
+  );
+}
+
+function CredentialRow({ label, value, mono, onCopy }) {
+  return (
+    <div>
+      <span className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-1 block">{label}</span>
+      <div className="flex gap-2">
+        <code className={`flex-1 bg-white border rounded-lg px-3 py-2 text-xs ${mono ? 'font-mono' : ''} text-ink-700 truncate`}>{value}</code>
+        <button onClick={onCopy} className="btn-soft text-[10px] flex-shrink-0"><Copy className="w-3 h-3" /> Copiar</button>
+      </div>
+    </div>
   );
 }
 
@@ -228,5 +323,42 @@ function Field({ label, children }) {
       <span className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-1 block">{label}</span>
       {children}
     </label>
+  );
+}
+
+function PortalUrlCard() {
+  const showToast = useToast(s => s.show);
+  const [copied, setCopied] = useState(false);
+  const portalUrl = `${window.location.origin}/portal`;
+
+  const copy = async (text, label) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      showToast(`${label} copiado`, 'success');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      showToast('No se pudo copiar', 'error');
+    }
+  };
+
+  return (
+    <div className="mb-6 bg-gradient-to-br from-violet-50 to-fuchsia-50 border border-violet-200 rounded-2xl p-4 md:p-5">
+      <div className="flex items-start gap-3 flex-wrap">
+        <div className="w-10 h-10 rounded-xl bg-violet-600 text-white flex items-center justify-center flex-shrink-0">
+          <LinkIcon className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-black text-sm mb-0.5">URL del portal para clientes</h3>
+          <p className="text-[11px] text-ink-500 mb-2">Comparte este enlace junto con el email y la contraseña temporal que generaste al crear cada cliente.</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <code className="flex-1 bg-white border rounded-lg px-3 py-2 text-xs font-mono text-violet-700 truncate">{portalUrl}</code>
+            <button onClick={() => copy(portalUrl, 'Enlace')} className="btn-primary text-xs flex-shrink-0">
+              {copied ? <><Check className="w-3.5 h-3.5" /> Copiado</> : <><Copy className="w-3.5 h-3.5" /> Copiar enlace</>}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

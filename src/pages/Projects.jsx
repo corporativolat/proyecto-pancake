@@ -12,6 +12,7 @@ import { createProject } from '../lib/data';
 import { uploadContract } from '../lib/storage';
 import { useToast } from '../lib/toast';
 import Avatar from '../components/Avatar.jsx';
+import ClientPicker from '../components/ClientPicker.jsx';
 
 if (typeof window !== 'undefined') gsap.registerPlugin(Draggable);
 
@@ -459,6 +460,7 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
     company: '',
     category_id: categories[0]?.id || '',
     client_lead: '',
+    client_id: '',
     status: 'No iniciado',
     goal: '',
     owner_id: defaultOwnerId || (profiles[0]?.id || ''),
@@ -570,6 +572,7 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
       company: form.company.trim(),
       category_id: form.category_id || null,
       client_lead: form.client_lead.trim(),
+      client_id: form.client_id || null,
       status: form.status,
       goal: form.goal.trim(),
       owner_id: ownerHasAccount ? form.owner_id : null,
@@ -668,8 +671,12 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <NewField label={t('projects.field.dependency')} help={PROJECT_FIELD_HELP.client_lead}>
-            <input value={form.client_lead} onChange={e => set('client_lead', e.target.value)} placeholder={t('projects.field.dependencyPlaceholder')} className="input-light" />
+          <NewField label="Cliente" help="Cliente con cuenta en la plataforma. Selecciónalo de la lista o créalo desde aquí — siempre queda registrado como usuario del portal.">
+            <ClientPicker
+              value={form.client_id}
+              onChange={(id, name) => { set('client_id', id); set('client_lead', name || ''); }}
+              placeholder="Buscar o crear cliente…"
+            />
           </NewField>
           <NewField label={t('projects.field.responsible')} help={PROJECT_FIELD_HELP.owner_id}>
             <div className="flex items-center justify-between mb-1.5">

@@ -26,8 +26,9 @@ export async function markAllRead(profileId) {
 
 export function subscribeNotifications(profileId, onInsert) {
   if (!profileId) return () => {};
+  const uniq = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
   const ch = supabase
-    .channel('notif-' + profileId)
+    .channel(`notif-${profileId}-${uniq}`)
     .on('postgres_changes', {
       event: 'INSERT',
       schema: 'pro_gestion',

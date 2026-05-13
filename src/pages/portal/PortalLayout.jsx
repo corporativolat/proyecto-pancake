@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FolderKanban, Calendar, FileText, User, LogOut, Menu, X, Briefcase, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, FolderKanban, Calendar, FileText, User, LogOut, Menu, X, Briefcase, HelpCircle, Moon, Sun } from 'lucide-react';
 import { useAuth } from '../../lib/auth.jsx';
+import { useTheme } from '../../lib/theme.jsx';
 import OnboardingTour from '../../components/OnboardingTour.jsx';
 import NotifBell from '../../components/NotifBell.jsx';
 
@@ -23,6 +24,7 @@ const NAV = [
 
 export default function PortalLayout({ children }) {
   const { profile, signOut } = useAuth();
+  const { theme, toggle: toggleTheme } = useTheme();
   const loc = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
@@ -50,7 +52,12 @@ export default function PortalLayout({ children }) {
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center"><Briefcase className="w-4 h-4 text-white" /></div>
           <span className="font-black text-sm">Portal</span>
         </div>
-        <NotifBell variant="light" />
+        <div className="flex items-center gap-1">
+          <button onClick={toggleTheme} title="Tema" className="p-2 rounded-lg text-ink-600 hover:bg-ink-100 transition">
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+          <NotifBell variant="light" />
+        </div>
       </div>
 
       {/* Sidebar */}
@@ -67,6 +74,9 @@ export default function PortalLayout({ children }) {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <button onClick={toggleTheme} title="Tema" className="hidden md:inline-flex p-2 rounded-lg text-ink-500 hover:bg-ink-100 hover:text-ink-800 transition">
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
             <div className="hidden md:block"><NotifBell variant="light" /></div>
             <button onClick={() => setMobileOpen(false)} className="md:hidden p-1 text-ink-500"><X className="w-4 h-4" /></button>
           </div>

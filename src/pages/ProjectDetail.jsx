@@ -10,8 +10,10 @@ import { calcPhaseProgress, calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, P
 import Avatar from '../components/Avatar.jsx';
 import Comments from '../components/Comments.jsx';
 import ActivityFeed from '../components/ActivityFeed.jsx';
+import ClientDocsPanel from '../components/ClientDocsPanel.jsx';
 import { animateBars, confetti, reduced } from '../lib/motion';
 import { updateProject, deleteProjectById, setProjectMember, createPhase, updatePhase, deletePhase, createTask, updateTask, deleteTask, reorderPhases, createMilestone, updateMilestone, deleteMilestone, fetchMilestoneTemplates, applyMilestoneTemplate } from '../lib/data';
+import { supabase } from '../lib/supabase';
 import { uploadAttachment, removeAttachmentFile } from '../lib/storage';
 import { useToast } from '../lib/toast';
 import { askConfirm } from '../lib/confirm.jsx';
@@ -33,6 +35,8 @@ export default function ProjectDetail() {
   const showToast = useToast(s => s.show);
   const [editingTask, setEditingTask] = useState(null);
   const [showFull, setShowFull] = useState(false);
+  const [showClientDocs, setShowClientDocs] = useState(false);
+  const [clientDocsBadge, setClientDocsBadge] = useState(0);
   const [showExec, setShowExec] = useState(false);
   const [mobileTab, setMobileTab] = useState('roadmap'); // 'roadmap' | 'gantt'
   const [roadmapPopup, setRoadmapPopup] = useState(false);
@@ -49,6 +53,26 @@ export default function ProjectDetail() {
   const headerRef = useRef(null);
   const phasesScrollRef = useRef(null);
   const ganttScrollRef = useRef(null);
+
+  // Badge count: docs en estado 'enviado' (por revisar) — independiente del modal
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    const loadCount = async () => {
+      const { count } = await supabase
+        .from('documents')
+        .select('id', { count: 'exact', head: true })
+        .eq('project_id', id)
+        .eq('status', 'enviado');
+      if (!cancelled) setClientDocsBadge(count || 0);
+    };
+    loadCount();
+    const ch = supabase
+      .channel(`docs-count-${id}-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'documents', filter: `project_id=eq.${id}` }, loadCount)
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, [id]);
 
   const scrollGantt = (deltaWeeks) => {
     const sc = ganttScrollRef.current;
@@ -201,6 +225,14 @@ export default function ProjectDetail() {
             </button>
             <button onClick={() => setShowFull(true)} className="btn-soft"><Maximize2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t('pj.expand')}</span></button>
             <button onClick={() => setShowExec(true)} className="btn-soft"><FileText className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t('pj.report')}</span></button>
+            <button onClick={() => setShowClientDocs(true)} className="btn-soft relative" title="Documentos del cliente">
+              <FileText className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Docs cliente</span>
+              {clientDocsBadge > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-black flex items-center justify-center shadow-md ring-2 ring-white">
+                  {clientDocsBadge > 9 ? '9+' : clientDocsBadge}
+                </span>
+              )}
+            </button>
             {can('deleteProject') && <button onClick={handleDelete} className="btn-danger"><Trash2 className="w-3.5 h-3.5" /></button>}
             <button onClick={() => navigate('/projects')} className="btn-dark"><X className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t('pj.back')}</span></button>
           </div>
@@ -466,6 +498,12 @@ export default function ProjectDetail() {
       )}
 
       {showFull && <FullGanttModal project={project} profiles={profiles} editable={editable} onChange={refreshProjects} onEditTask={(tk, phaseId) => setEditingTask({ ...tk, phaseId })} onClose={() => setShowFull(false)} />}
+
+      {showClientDocs && (
+        <Modal title={`Documentos del cliente · ${project.title}`} onClose={() => setShowClientDocs(false)} footer={<></>} maxWidth="max-w-4xl">
+          <ClientDocsPanel projectId={project.id} />
+        </Modal>
+      )}
       {showExec && <ExecModal project={project} profiles={profiles} onClose={() => setShowExec(false)} />}
     </section>
   );

@@ -359,6 +359,13 @@
 }
 
 @keyframes float { 0%, 100% { transform: translate(0,0) scale(1); } 33% { transform: translate(40px,-50px) scale(1.1); } 66% { transform: translate(-30px,30px) scale(0.95); } }
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(-12deg); }
+  40% { transform: rotate(10deg); }
+  60% { transform: rotate(-6deg); }
+  80% { transform: rotate(4deg); }
+}
 @keyframes shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-8px); } 40% { transform: translateX(8px); } 60% { transform: translateX(-6px); } 80% { transform: translateX(6px); } }
 @keyframes rise { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes today-pulse { 0%,100% { opacity: .7; } 50% { opacity: 1; } }
@@ -498,6 +505,20 @@ body.dark .cmdk-item.active, body.dark .cmdk-item:hover { background: #27272a; }
 .cmdk-section { font-size: 0.65rem; font-weight: 800; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.1em; padding: 0.5rem 0.85rem 0.25rem; }
 .cmdk-kbd { background: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 4px; padding: 1px 5px; font-size: 0.65rem; font-family: 'JetBrains Mono', monospace; }
 body.dark .cmdk-kbd { background: #27272a; border-color: #3f3f46; }
+
+/* ===== PORTAL CLIENTE DARK TWEAKS ===== */
+body.dark .bg-emerald-50\/40,
+body.dark .bg-emerald-50\/30 { background: rgba(16,185,129,0.10) !important; }
+body.dark .bg-emerald-100 { background: rgba(16,185,129,0.18) !important; color: #6ee7b7; }
+body.dark .text-emerald-700 { color: #6ee7b7 !important; }
+body.dark .text-emerald-600 { color: #34d399 !important; }
+body.dark .hover\:border-emerald-300:hover { border-color: rgba(16,185,129,0.45) !important; }
+body.dark .bg-violet-100 { background: rgba(124,58,237,0.18) !important; color: #c4b5fd; }
+body.dark .text-violet-700 { color: #c4b5fd !important; }
+body.dark .bg-amber-100 { background: rgba(245,158,11,0.18) !important; color: #fde68a; }
+body.dark .text-amber-700 { color: #fde68a !important; }
+body.dark .bg-blue-100 { background: rgba(59,130,246,0.18) !important; color: #93c5fd; }
+body.dark .text-blue-700 { color: #93c5fd !important; }
 
 /* COMMENTS */
 .comment-bubble {
