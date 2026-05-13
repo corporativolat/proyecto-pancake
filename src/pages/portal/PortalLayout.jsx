@@ -1,45 +1,22 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FolderKanban, Calendar, FileText, User, LogOut, Menu, X, Briefcase, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, FolderKanban, Calendar, FileText, User, LogOut, Menu, X, Briefcase } from 'lucide-react';
 import { useAuth } from '../../lib/auth.jsx';
-import OnboardingTour from '../../components/OnboardingTour.jsx';
-import NotifBell from '../../components/NotifBell.jsx';
-
-const TOUR_STEPS = [
-  { selector: '[data-tour="dashboard"]',  title: 'Inicio',       body: 'Aquí verás un resumen de tus proyectos, documentos pendientes y próximas fechas.' },
-  { selector: '[data-tour="projects"]',   title: 'Mis proyectos', body: 'Lista completa de proyectos. Filtra por estado y entra al detalle de cada uno.' },
-  { selector: '[data-tour="calendar"]',   title: 'Calendario',    body: 'Fechas importantes: inicios, entregas, hitos y revisiones.' },
-  { selector: '[data-tour="documents"]',  title: 'Documentos',    body: 'Sube los archivos que tu equipo necesita. Cada documento muestra su estado: pendiente, en revisión, aprobado o rechazado.' },
-  { selector: '[data-tour="profile"]',    title: 'Tu perfil',     body: 'Cambia tu contraseña, actualiza tus datos o vuelve a ver este recorrido cuando quieras.' }
-];
 
 const NAV = [
-  { to: '/portal',            label: 'Inicio',      icon: LayoutDashboard, end: true, tour: 'dashboard' },
-  { to: '/portal/projects',   label: 'Proyectos',   icon: FolderKanban,    tour: 'projects' },
-  { to: '/portal/calendar',   label: 'Calendario',  icon: Calendar,        tour: 'calendar' },
-  { to: '/portal/documents',  label: 'Documentos',  icon: FileText,        tour: 'documents' },
-  { to: '/portal/profile',    label: 'Perfil',      icon: User,            tour: 'profile' }
+  { to: '/portal',            label: 'Inicio',      icon: LayoutDashboard, end: true },
+  { to: '/portal/projects',   label: 'Proyectos',   icon: FolderKanban },
+  { to: '/portal/calendar',   label: 'Calendario',  icon: Calendar },
+  { to: '/portal/documents',  label: 'Documentos',  icon: FileText },
+  { to: '/portal/profile',    label: 'Perfil',      icon: User }
 ];
 
 export default function PortalLayout({ children }) {
   const { profile, signOut } = useAuth();
   const loc = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [tourOpen, setTourOpen] = useState(false);
 
   useEffect(() => { setMobileOpen(false); }, [loc.pathname]);
-
-  // Auto-lanzar tour la primera vez (cliente sin onboarding completado)
-  useEffect(() => {
-    if (!profile) return;
-    if (profile.onboarding_completed) return;
-    let skipped = false;
-    try { skipped = localStorage.getItem('portal-tour-skipped') === '1'; } catch { /* noop */ }
-    if (skipped) return;
-    // pequeño delay para que el DOM esté listo
-    const t = setTimeout(() => setTourOpen(true), 600);
-    return () => clearTimeout(t);
-  }, [profile]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-ink-50 text-ink-800">
@@ -50,7 +27,7 @@ export default function PortalLayout({ children }) {
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center"><Briefcase className="w-4 h-4 text-white" /></div>
           <span className="font-black text-sm">Portal</span>
         </div>
-        <NotifBell variant="light" />
+        <div className="w-9" />
       </div>
 
       {/* Sidebar */}
@@ -66,16 +43,13 @@ export default function PortalLayout({ children }) {
               <div className="text-[10px] font-bold text-ink-400 uppercase tracking-widest">Clientes</div>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="hidden md:block"><NotifBell variant="light" /></div>
-            <button onClick={() => setMobileOpen(false)} className="md:hidden p-1 text-ink-500"><X className="w-4 h-4" /></button>
-          </div>
+          <button onClick={() => setMobileOpen(false)} className="md:hidden p-1 text-ink-500"><X className="w-4 h-4" /></button>
         </div>
 
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          {NAV.map(({ to, label, icon: Icon, end, tour }) => (
+          {NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink
-              key={to} to={to} end={end} data-tour={tour}
+              key={to} to={to} end={end}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold transition ${isActive ? 'bg-emerald-50 text-emerald-700' : 'text-ink-500 hover:bg-ink-100 hover:text-ink-800'}`
               }>
@@ -83,11 +57,6 @@ export default function PortalLayout({ children }) {
               <span>{label}</span>
             </NavLink>
           ))}
-          <button onClick={() => { try { localStorage.removeItem('portal-tour-skipped'); } catch { /* noop */ } setTourOpen(true); }}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold text-ink-400 hover:bg-ink-100 hover:text-ink-700 transition mt-4">
-            <HelpCircle className="w-3.5 h-3.5" />
-            <span>Ver recorrido</span>
-          </button>
         </nav>
 
         <div className="border-t p-4">
@@ -109,8 +78,6 @@ export default function PortalLayout({ children }) {
       <main className="flex-1 flex flex-col overflow-hidden pt-14 md:pt-0">
         {children}
       </main>
-
-      {tourOpen && <OnboardingTour steps={TOUR_STEPS} onClose={() => setTourOpen(false)} />}
     </div>
   );
 }

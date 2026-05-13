@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, AlertCircle, Clock, FileText, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../lib/auth.jsx';
 import { supabase } from '../../lib/supabase';
-import PendingDocsBanner from '../../components/PendingDocsBanner.jsx';
 
 // Dashboard del cliente: estado general de sus proyectos.
 // Por ahora consulta directa; en fase 3 se mueve a data.js.
@@ -37,12 +36,10 @@ export default function PortalDashboard() {
 
   return (
     <section className="flex-1 overflow-y-auto p-6 md:p-10 max-w-5xl">
-      <header className="mb-6">
+      <header className="mb-8">
         <h1 className="text-2xl md:text-3xl font-black tracking-tight">Hola, {profile?.name || 'Cliente'}</h1>
         <p className="text-sm text-ink-500 mt-1">Resumen de tus proyectos.</p>
       </header>
-
-      <PendingDocsBanner />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <KPI label="Proyectos activos" value={active.length} icon={Clock} color="emerald" />
