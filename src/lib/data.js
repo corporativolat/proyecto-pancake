@@ -166,3 +166,38 @@ export async function applyMilestoneTemplate(projectId) {
   if (error) throw error;
   return data ?? 0;
 }
+
+// ===== Document templates (mig-21) =====
+export async function fetchDocumentTemplates(categoryId = null) {
+  let q = supabase.from('document_templates').select('*').order('position').order('created_at');
+  if (categoryId) q = q.eq('category_id', categoryId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data;
+}
+
+export async function createDocumentTemplate(payload) {
+  const { data, error } = await supabase.from('document_templates').insert(payload).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateDocumentTemplate(id, patch) {
+  const { error } = await supabase.from('document_templates').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteDocumentTemplate(id) {
+  const { error } = await supabase.from('document_templates').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// RPC: aplica plantillas de documentos al proyecto. trigger=null aplica todas.
+export async function applyDocumentTemplate(projectId, triggerStatus = null) {
+  const { data, error } = await supabase.rpc('apply_document_template', {
+    p_project_id: projectId,
+    p_trigger_status: triggerStatus
+  });
+  if (error) throw error;
+  return data ?? 0;
+}
