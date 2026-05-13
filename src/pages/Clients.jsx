@@ -343,17 +343,18 @@ function PortalUrlCard() {
   };
 
   return (
-    <div className="mb-6 bg-gradient-to-br from-violet-50 to-fuchsia-50 border border-violet-200 rounded-2xl p-4 md:p-5">
-      <div className="flex items-start gap-3 flex-wrap">
-        <div className="w-10 h-10 rounded-xl bg-violet-600 text-white flex items-center justify-center flex-shrink-0">
+    <div className="card-light mb-6 p-5 md:p-6">
+      <div className="flex items-start gap-4 flex-wrap">
+        <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white flex items-center justify-center flex-shrink-0 shadow-md shadow-violet-500/20">
           <LinkIcon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-black text-sm mb-0.5">URL del portal para clientes</h3>
-          <p className="text-[11px] text-ink-500 mb-2">Comparte este enlace junto con el email y la contraseña temporal que generaste al crear cada cliente.</p>
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-ink-400 mb-1">Acceso al portal</div>
+          <h3 className="font-black text-base tracking-tight mb-1">URL del portal para clientes</h3>
+          <p className="text-[12px] text-ink-500 mb-3 leading-relaxed">Comparte este enlace junto con el email y la contraseña temporal que generaste al crear cada cliente.</p>
           <div className="flex flex-col sm:flex-row gap-2">
-            <code className="flex-1 bg-white border rounded-lg px-3 py-2 text-xs font-mono text-violet-700 truncate">{portalUrl}</code>
-            <button onClick={() => copy(portalUrl, 'Enlace')} className="btn-primary text-xs flex-shrink-0">
+            <code className="flex-1 input-light px-3 py-2 text-xs font-mono text-violet-700 truncate flex items-center">{portalUrl}</code>
+            <button onClick={() => copy(portalUrl, 'Enlace')} className="btn-primary text-xs flex-shrink-0 justify-center">
               {copied ? <><Check className="w-3.5 h-3.5" /> Copiado</> : <><Copy className="w-3.5 h-3.5" /> Copiar enlace</>}
             </button>
           </div>
