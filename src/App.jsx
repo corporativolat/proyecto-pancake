@@ -21,6 +21,7 @@ const ProjectDetail = lazy(() => import('./pages/ProjectDetail.jsx'));
 const Admin = lazy(() => import('./pages/Admin.jsx'));
 const AdminReports = lazy(() => import('./pages/AdminReports.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
+const Clients = lazy(() => import('./pages/Clients.jsx'));
 
 // Portal cliente (lazy)
 const PortalLogin   = lazy(() => import('./pages/portal/PortalLogin.jsx'));
@@ -171,6 +172,7 @@ export default function App() {
               <Route path="/team" element={<Team />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:id" element={<ProjectDetail />} />
+              {can('manageClients') && <Route path="/clients" element={<Clients />} />}
               {can('manageUsers') && <Route path="/admin" element={<Admin />} />}
               {can('manageUsers') && <Route path="/admin/reports" element={<AdminReports />} />}
               <Route path="/settings" element={<Settings />} />

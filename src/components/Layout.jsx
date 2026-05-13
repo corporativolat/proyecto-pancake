@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FolderKanban, ShieldCheck, Plus, LogOut, Settings as SettingsIcon, Search, Moon, Sun, Menu } from 'lucide-react';
+import { LayoutDashboard, Users, FolderKanban, ShieldCheck, Plus, LogOut, Settings as SettingsIcon, Search, Moon, Sun, Menu, Briefcase } from 'lucide-react';
 import gsap from 'gsap';
 import { useAuth } from '../lib/auth.jsx';
 import { useStore } from '../lib/store';
@@ -98,6 +98,7 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
           {can('viewKPIs') && <NavItem to="/dashboard" icon={<LayoutDashboard className="w-4 h-4" />}>{t('nav.dashboard')}</NavItem>}
           <NavItem to="/team" icon={<Users className="w-4 h-4" />}>{t('nav.team')}</NavItem>
           <NavItem to="/projects" icon={<FolderKanban className="w-4 h-4" />}>{t('nav.projects')}</NavItem>
+          {can('manageClients') && <NavItem to="/clients" icon={<Briefcase className="w-4 h-4" />}>Clientes</NavItem>}
           {can('manageUsers') && <NavItem to="/admin" icon={<ShieldCheck className="w-4 h-4" />}>{t('nav.admin')}</NavItem>}
           <NavItem to="/settings" icon={<SettingsIcon className="w-4 h-4" />}>{t('nav.settings')}</NavItem>
 
