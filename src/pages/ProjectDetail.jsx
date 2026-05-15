@@ -1,16 +1,17 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Calendar, Maximize2, Minimize2, FileText, Trash2, X, Plus, Map, ChevronLeft, ChevronRight, User, Download, ChevronUp, ChevronDown, Flag, ListChecks } from 'lucide-react';
+import { Calendar, Maximize2, Minimize2, FileText, Trash2, X, Plus, Map as MapIcon, ChevronLeft, ChevronRight, User, Download, ChevronUp, ChevronDown, Flag, ListChecks } from 'lucide-react';
 import gsap from 'gsap';
 import { Draggable } from 'gsap/Draggable';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcPhaseProgress, calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, effectiveHealth, projectCompleteness } from '../lib/utils';
+import { calcPhaseProgress, calcProjectProgress, taskProgress, projectMaxDayIndex, clampSpanToProject, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, effectiveHealth, projectCompleteness, fmtMoney } from '../lib/utils';
 import Avatar from '../components/Avatar.jsx';
 import Comments from '../components/Comments.jsx';
 import ActivityFeed from '../components/ActivityFeed.jsx';
 import ClientDocsPanel from '../components/ClientDocsPanel.jsx';
+import ClientTasksPanel from '../components/ClientTasksPanel.jsx';
 import { animateBars, confetti, reduced } from '../lib/motion';
 import { updateProject, deleteProjectById, setProjectMember, createPhase, updatePhase, deletePhase, createTask, updateTask, deleteTask, reorderPhases, createMilestone, updateMilestone, deleteMilestone, fetchMilestoneTemplates, applyMilestoneTemplate } from '../lib/data';
 import { supabase } from '../lib/supabase';
@@ -37,6 +38,9 @@ export default function ProjectDetail() {
   const [showFull, setShowFull] = useState(false);
   const [showClientDocs, setShowClientDocs] = useState(false);
   const [clientDocsBadge, setClientDocsBadge] = useState(0);
+  const [showClientTasks, setShowClientTasks] = useState(false);
+  const [clientTasksBadge, setClientTasksBadge] = useState(0);
+  const [showTeamEditor, setShowTeamEditor] = useState(false);
   const [showExec, setShowExec] = useState(false);
   const [mobileTab, setMobileTab] = useState('roadmap'); // 'roadmap' | 'gantt'
   const [roadmapPopup, setRoadmapPopup] = useState(false);
@@ -74,6 +78,26 @@ export default function ProjectDetail() {
     return () => { cancelled = true; supabase.removeChannel(ch); };
   }, [id]);
 
+  // Badge count: tareas cliente con status 'entregado' (por revisar)
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    const loadCount = async () => {
+      const { count } = await supabase
+        .from('client_tasks')
+        .select('id', { count: 'exact', head: true })
+        .eq('project_id', id)
+        .eq('status', 'entregado');
+      if (!cancelled) setClientTasksBadge(count || 0);
+    };
+    loadCount();
+    const ch = supabase
+      .channel(`ctasks-count-${id}-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'client_tasks', filter: `project_id=eq.${id}` }, loadCount)
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, [id]);
+
   const scrollGantt = (deltaWeeks) => {
     const sc = ganttScrollRef.current;
     if (!sc) return;
@@ -103,16 +127,28 @@ export default function ProjectDetail() {
 
   const projProg = calcProjectProgress(project);
 
+  const maxDayIndex = projectMaxDayIndex(project);
+
   const handleNewPhase = async () => {
     try {
       const pos = (project.phases?.length || 0);
-      await createPhase(id, pos);
+      const c = clampSpanToProject({ start_week: 1, start_day: 1, duration: 14 }, maxDayIndex);
+      await createPhase(id, pos, {
+        start_week: c.start_week, start_day: c.start_day,
+        duration_days: c.duration, duration_weeks: Math.max(1, Math.min(8, Math.ceil(c.duration / 7))),
+      });
       await refreshProjects();
     } catch (e) { showToast(t('pj.errorPrefix') + e.message, 'error'); }
   };
 
   const handleDelete = async () => {
-    const ok = await askConfirm({ title: t('pj.confirm.deleteProjectTitle'), message: t('pj.confirm.deleteProjectMsg'), danger: true });
+    const ok = await askConfirm({
+      title: `Eliminar proyecto "${project.title}"`,
+      message: `Esto borrará permanentemente:\n• El proyecto y todas sus etapas, actividades e hitos\n• Comentarios, archivos, tareas del cliente y reportes\n• El historial de actividad\n\nLos miembros y el cliente perderán acceso de inmediato. No se puede recuperar.`,
+      danger: true,
+      requireType: project.title,
+      confirmLabel: 'ELIMINAR DEFINITIVAMENTE'
+    });
     if (!ok) return;
     try {
       await deleteProjectById(id);
@@ -168,46 +204,38 @@ export default function ProjectDetail() {
                   className="text-[10px] font-bold border-none bg-ink-100 rounded px-2 py-1 text-ink-600 focus:ring-2 focus:ring-violet-500 outline-none" />
               </div>
             </div>
-            {(() => {
-              const c = categories.find(x => x.id === project.category_id);
-              const help = c ? PROJECT_CATEGORY_HELP[c.name] : null;
-              if (!c || !help) return null;
-              return (
-                <p className="mt-2 text-[11px] text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-2.5 py-1.5 leading-snug inline-block">
-                  <span className="font-bold">{c.name}:</span> {help}
-                </p>
-              );
-            })()}
-            {(() => {
-              const val = Number(project.project_value);
-              const hrs = Number(project.project_hours);
-              if (!Number.isFinite(val) || val <= 0 || !Number.isFinite(hrs) || hrs <= 0) return null;
-              const rate = val / hrs;
-              const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
-              return (
-                <div className="mt-2 inline-flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full px-3 py-1 mr-2">
-                  <span title={t('projects.field.value')}>{fmt(val)}</span>
-                  <span className="opacity-50">·</span>
-                  <span title={t('projects.field.hours')} className="tabular">{hrs}h</span>
-                  <span className="opacity-50">·</span>
-                  <span title={t('projects.field.perHour')} className="tabular">{fmt(rate)}{t('projects.field.perHour')}</span>
-                </div>
-              );
-            })()}
-            {(() => {
-              const score = projectCompleteness(project);
-              const cls = score >= 80
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                : score >= 50
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              {(() => {
+                const val = Number(project.project_value);
+                const hrs = Number(project.project_hours);
+                if (!Number.isFinite(val) || val <= 0 || !Number.isFinite(hrs) || hrs <= 0) return null;
+                const rate = val / hrs;
+                const cur = project.currency || 'COP';
+                const fmt = (n) => fmtMoney(n, cur);
+                return (
+                  <div className="inline-flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full px-3 py-1">
+                    <span title={t('projects.field.value')}>{fmt(val)} {cur}</span>
+                    <span className="opacity-50">·</span>
+                    <span title={t('projects.field.hours')} className="tabular">{hrs}h</span>
+                    <span className="opacity-50">·</span>
+                    <span title={t('projects.field.perHour')} className="tabular">{fmt(rate)}{t('projects.field.perHour')}</span>
+                  </div>
+                );
+              })()}
+              {(() => {
+                const score = projectCompleteness(project);
+                if (score >= 80) return null; // solo alerta si falta info
+                const cls = score >= 50
                   ? 'bg-amber-50 text-amber-700 border-amber-200'
                   : 'bg-red-50 text-red-700 border-red-200';
-              return (
-                <div className={`mt-2 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest border rounded-full px-3 py-1 ${cls}`} title={t('pj.completenessHelp')}>
-                  <span>{t('pj.completeness')}</span>
-                  <span className="tabular">{score}%</span>
-                </div>
-              );
-            })()}
+                return (
+                  <div className={`inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest border rounded-full px-3 py-1 ${cls}`} title={t('pj.completenessHelp')}>
+                    <span>{t('pj.completeness')}</span>
+                    <span className="tabular">{score}%</span>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
           <div className="flex gap-2 items-start flex-wrap">
             <div className="flex flex-col items-start lg:items-end mr-2 flex-1 lg:flex-initial">
@@ -221,106 +249,122 @@ export default function ProjectDetail() {
             </div>
             <button onClick={toggleHeader} className="btn-soft" title={headerCollapsed ? 'Mostrar detalles' : 'Ocultar detalles'}>
               {headerCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">{headerCollapsed ? 'Detalles' : 'Compactar'}</span>
+              <span className="hidden xl:inline">{headerCollapsed ? 'Detalles' : 'Compactar'}</span>
             </button>
-            <button onClick={() => setShowFull(true)} className="btn-soft"><Maximize2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t('pj.expand')}</span></button>
-            <button onClick={() => setShowExec(true)} className="btn-soft"><FileText className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t('pj.report')}</span></button>
+            <button onClick={() => setShowFull(true)} className="btn-soft" title={t('pj.expand')}>
+              <Maximize2 className="w-3.5 h-3.5" /> <span className="hidden xl:inline">{t('pj.expand')}</span>
+            </button>
+            <button onClick={() => setShowExec(true)} className="btn-soft" title={t('pj.report')}>
+              <FileText className="w-3.5 h-3.5" /> <span className="hidden xl:inline">{t('pj.report')}</span>
+            </button>
             <button onClick={() => setShowClientDocs(true)} className="btn-soft relative" title="Documentos del cliente">
-              <FileText className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Docs cliente</span>
+              <FileText className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Docs</span>
               {clientDocsBadge > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-black flex items-center justify-center shadow-md ring-2 ring-white">
                   {clientDocsBadge > 9 ? '9+' : clientDocsBadge}
                 </span>
               )}
             </button>
-            {can('deleteProject') && <button onClick={handleDelete} className="btn-danger"><Trash2 className="w-3.5 h-3.5" /></button>}
-            <button onClick={() => navigate('/projects')} className="btn-dark"><X className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t('pj.back')}</span></button>
+            <button onClick={() => setShowClientTasks(true)} className="btn-soft relative" title="Tareas para el cliente">
+              <ListChecks className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Tareas</span>
+              {clientTasksBadge > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-violet-600 text-white text-[10px] font-black flex items-center justify-center shadow-md ring-2 ring-white">
+                  {clientTasksBadge > 9 ? '9+' : clientTasksBadge}
+                </span>
+              )}
+            </button>
+            {can('deleteProject') && <button onClick={handleDelete} className="btn-danger" title={t('pj.confirm.deleteProjectTitle')}><Trash2 className="w-3.5 h-3.5" /></button>}
+            <button onClick={() => navigate('/projects')} className="btn-dark" title={t('pj.back')}><X className="w-3.5 h-3.5" /></button>
           </div>
         </div>
 
         {!headerCollapsed && (<>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pj-extra">
-          <div className="md:col-span-2">
+        {/* Fila 1: Objetivo + Observación lado a lado (mismo height) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pj-extra">
+          <div>
             <DetailLabel label={t('pj.objectiveLabel')} help={PROJECT_FIELD_HELP.goal} />
-            <textarea value={project.goal || ''} disabled={!editable} onChange={e => debouncedUpdate('goal', e.target.value)} className="input-light h-14 resize-none" placeholder={t('pj.objectivePlaceholder')} />
+            <textarea value={project.goal || ''} disabled={!editable} onChange={e => debouncedUpdate('goal', e.target.value)} className="input-light h-20 resize-none w-full" placeholder={t('pj.objectivePlaceholder')} />
           </div>
-          <div className="space-y-2">
-            <div>
+          <div>
+            <DetailLabel label={t('pj.observationsLabel')} help={PROJECT_FIELD_HELP.observation} />
+            <textarea value={project.observation || ''} disabled={!editable} onChange={e => debouncedUpdate('observation', e.target.value)} className="w-full bg-amber-50 border border-amber-100 rounded-2xl px-4 py-2 text-[11px] font-medium italic text-amber-900 outline-none h-20 resize-none focus:ring-2 focus:ring-amber-500" placeholder={t('pj.observationsPlaceholder')} />
+          </div>
+        </div>
+
+        {/* Fila 2: Responsable (con toggle) + Status + Salud + Dependencia */}
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 pj-extra mt-2">
+          <div className="md:col-span-2">
+            <div className="flex items-center justify-between mb-1">
               <DetailLabel label={t('pj.responsibleLabel')} help={PROJECT_FIELD_HELP.owner_id} />
-              <label className="text-[11px] font-bold text-ink-600 flex items-center gap-2 cursor-pointer select-none mb-1.5">
+              <label className="text-[10px] font-bold text-ink-500 flex items-center gap-1 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={!!project.owner_id}
                   disabled={!editable}
                   onChange={e => {
                     if (e.target.checked) {
-                      // switch a "tiene cuenta": pre-selecciono el primer profile y limpio label
                       debouncedUpdate('owner_label', '');
                       debouncedUpdate('owner_id', profiles[0]?.id || null);
                     } else {
-                      // switch a "sin cuenta": limpio owner_id, preservo label
                       debouncedUpdate('owner_id', null);
                     }
                   }}
-                  className="accent-violet-600"
+                  className="accent-violet-600 w-3 h-3"
                 />
                 {t('projects.field.ownerHasAccount')}
               </label>
-              {project.owner_id ? (
-                <select value={project.owner_id} disabled={!editable} onChange={e => debouncedUpdate('owner_id', e.target.value || null)} className="input-light">
-                  <option value="">{t('projects.field.ownerSelectEmpty')}</option>
-                  {profiles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={project.owner_label || ''}
-                  disabled={!editable}
-                  onChange={e => debouncedUpdate('owner_label', e.target.value)}
-                  placeholder={t('projects.field.ownerLabelPlaceholder')}
-                  className="input-light"
-                />
-              )}
             </div>
-            <div>
-              <DetailLabel label={t('pj.status')} help={PROJECT_FIELD_HELP.status} />
-              <select value={project.status} disabled={!editable} onChange={e => debouncedUpdate('status', e.target.value)} className="input-light">
-                {STATUSES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+            {project.owner_id ? (
+              <select value={project.owner_id} disabled={!editable} onChange={e => debouncedUpdate('owner_id', e.target.value || null)} className="input-light">
+                <option value="">{t('projects.field.ownerSelectEmpty')}</option>
+                {profiles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={project.owner_label || ''}
+                disabled={!editable}
+                onChange={e => debouncedUpdate('owner_label', e.target.value)}
+                placeholder={t('projects.field.ownerLabelPlaceholder')}
+                className="input-light"
+              />
+            )}
+          </div>
+          <div>
+            <DetailLabel label={t('pj.status')} help={PROJECT_FIELD_HELP.status} />
+            <select value={project.status} disabled={!editable} onChange={e => debouncedUpdate('status', e.target.value)} className="input-light">
+              {STATUSES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <DetailLabel label={t('pj.healthLabel')} help={t('pj.healthHelp')} />
+            <div className="flex items-center gap-2">
+              <span className={`status-dot status-${effectiveHealth(project, projProg)}`} />
+              <select
+                value={project.health_override ?? ''}
+                disabled={!can('editAll')}
+                onChange={e => {
+                  const v = e.target.value;
+                  debouncedUpdate('health_override', v === '' ? null : parseInt(v));
+                }}
+                className="input-light flex-1"
+                title={can('editAll') ? t('pj.healthHelp') : t('pj.healthAdminOnly')}
+              >
+                <option value="">{t('pj.healthAuto')}</option>
+                <option value="1">{t('pj.healthGreen')}</option>
+                <option value="2">{t('pj.healthAmber')}</option>
+                <option value="3">{t('pj.healthRed')}</option>
               </select>
             </div>
-            <div>
-              <DetailLabel label={t('pj.healthLabel')} help={t('pj.healthHelp')} />
-              <div className="flex items-center gap-2">
-                <span className={`status-dot status-${effectiveHealth(project, projProg)}`} />
-                <select
-                  value={project.health_override ?? ''}
-                  disabled={!can('editAll')}
-                  onChange={e => {
-                    const v = e.target.value;
-                    debouncedUpdate('health_override', v === '' ? null : parseInt(v));
-                  }}
-                  className="input-light flex-1"
-                  title={can('editAll') ? t('pj.healthHelp') : t('pj.healthAdminOnly')}
-                >
-                  <option value="">{t('pj.healthAuto')}</option>
-                  <option value="1">{t('pj.healthGreen')}</option>
-                  <option value="2">{t('pj.healthAmber')}</option>
-                  <option value="3">{t('pj.healthRed')}</option>
-                </select>
-              </div>
-            </div>
           </div>
-          <div>
-            <DetailLabel label={t('pj.observationsLabel')} help={PROJECT_FIELD_HELP.observation} />
-            <textarea value={project.observation || ''} disabled={!editable} onChange={e => debouncedUpdate('observation', e.target.value)} className="w-full bg-amber-50 border border-amber-100 rounded-2xl px-4 py-2 text-[11px] font-medium italic text-amber-900 outline-none h-14 resize-none focus:ring-2 focus:ring-amber-500" placeholder={t('pj.observationsPlaceholder')} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pj-extra mt-2">
-          <div>
+          <div className="md:col-span-2">
             <DetailLabel label={t('pj.dependencyLabel')} help={PROJECT_FIELD_HELP.client_lead} />
             <input type="text" value={project.client_lead || ''} disabled={!editable} onChange={e => debouncedUpdate('client_lead', e.target.value)} placeholder={t('pj.dependencyPlaceholder')} className="input-light" />
           </div>
+        </div>
+
+        {/* Fila 3: Fin + Entrega + Contrato */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pj-extra mt-2">
           <div>
             <DetailLabel label={t('pj.projectedEnd')} help={PROJECT_FIELD_HELP.projected_end_date} />
             <input type="date" value={project.projected_end_date || ''} disabled={!editable} onChange={e => debouncedUpdate('projected_end_date', e.target.value || null)} className="input-light" />
@@ -329,7 +373,7 @@ export default function ProjectDetail() {
             <DetailLabel label={t('pj.deliveryDate')} help={PROJECT_FIELD_HELP.delivery_date} />
             <input type="date" value={project.delivery_date || ''} disabled={!editable} onChange={e => debouncedUpdate('delivery_date', e.target.value || null)} className="input-light" />
           </div>
-          <div>
+          <div className="md:col-span-2">
             <DetailLabel label={t('pj.contractLabel')} help={PROJECT_FIELD_HELP.contract_url} />
             <div className="flex gap-2">
               <input type="text" value={project.contract_url || ''} disabled={!editable} onChange={e => debouncedUpdate('contract_url', e.target.value)} placeholder={t('pj.contractPlaceholder')} className="input-light flex-1" />
@@ -340,23 +384,69 @@ export default function ProjectDetail() {
           </div>
         </div>
 
-        <div className="mt-2 pj-extra">
-          <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-1 block">{t('pj.team')}</label>
-          <div className="flex flex-wrap gap-2">
-            {profiles.map(u => {
-              const isOwner = project.owner_id === u.id;
-              const isMember = (project.member_ids || []).includes(u.id);
-              const cls = isOwner ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md' : isMember ? 'bg-emerald-100 text-emerald-700' : 'bg-ink-100 text-ink-500';
-              return (
-                <button key={u.id} onClick={() => toggleMember(u.id, isOwner, isMember)} disabled={isOwner || !editable}
-                  className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition flex items-center gap-2 ${cls} ${(!editable || isOwner) ? 'opacity-60 cursor-not-allowed' : 'hover:scale-105 hover:shadow-md'}`}>
-                  <Avatar user={u} size={20} />
-                  {u.name}{isOwner ? ' ' + t('pj.leaderTag') : ''}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        {(() => {
+          const memberIds = new Set(project.member_ids || []);
+          const ownerId = project.owner_id;
+          const activeUsers = profiles.filter(u => u.id === ownerId || memberIds.has(u.id));
+          if (activeUsers.length === 0 && !editable) return null;
+          return (
+            <div className="mt-2 pj-extra">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest">{t('pj.team')}</label>
+                {editable && (
+                  <button onClick={() => setShowTeamEditor(s => !s)} className="btn-primary-sm text-[10px]">
+                    {showTeamEditor ? <ChevronUp className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                    {showTeamEditor ? 'Cerrar' : (activeUsers.length === 0 ? 'Asignar miembros' : 'Añadir / quitar')}
+                  </button>
+                )}
+              </div>
+              {activeUsers.length === 0 ? (
+                <p className="text-[11px] text-ink-400 italic">Sin equipo asignado. {editable && 'Pulsa "Asignar miembros" para añadir personas a este proyecto.'}</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {activeUsers.map(u => {
+                    const isOwner = ownerId === u.id;
+                    const cls = isOwner ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md' : 'bg-emerald-100 text-emerald-700';
+                    return (
+                      <span key={u.id} className={`text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-2 ${cls}`}>
+                        <Avatar user={u} size={20} />
+                        {u.name}{isOwner ? ' ' + t('pj.leaderTag') : ''}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              {showTeamEditor && editable && (
+                <div className="mt-2 p-3 bg-violet-50/40 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-2xl">
+                  <div className="text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-widest mb-2">
+                    Toca un nombre para añadirlo o quitarlo
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {profiles.map(u => {
+                      const isOwner = ownerId === u.id;
+                      const isMember = memberIds.has(u.id);
+                      const cls = isOwner
+                        ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white'
+                        : isMember
+                          ? 'bg-emerald-500 text-white shadow-md'
+                          : 'bg-white text-ink-600 border border-ink-200 hover:border-violet-400';
+                      return (
+                        <button key={u.id} onClick={() => toggleMember(u.id, isOwner, isMember)} disabled={isOwner}
+                          className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition flex items-center gap-2 ${cls} ${isOwner ? 'opacity-60 cursor-not-allowed' : 'hover:scale-105 hover:shadow-md'}`}>
+                          <Avatar user={u} size={18} />
+                          {u.name}
+                          {isOwner && <span className="text-[9px] opacity-80">{t('pj.leaderTag')}</span>}
+                          {isMember && !isOwner && <span className="text-[9px]">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {profiles.length === 0 && <p className="text-[11px] text-ink-500 italic mt-2">No hay otros miembros en la plataforma todavía.</p>}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         </>)}
       </div>
 
@@ -366,7 +456,7 @@ export default function ProjectDetail() {
           onClick={() => setMobileTab('roadmap')}
           className={`flex-1 py-3 text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition ${mobileTab === 'roadmap' ? 'text-violet-700 border-b-2 border-violet-600 bg-violet-50/50' : 'text-ink-400'}`}
         >
-          <Map className="w-3.5 h-3.5" /> {t('pj.tab.roadmap')}
+          <MapIcon className="w-3.5 h-3.5" /> {t('pj.tab.roadmap')}
         </button>
         <button
           onClick={() => setMobileTab('gantt')}
@@ -405,7 +495,7 @@ export default function ProjectDetail() {
               <div className={`${mobileTab === 'roadmap' ? 'flex' : 'hidden'} md:flex w-full md:flex-1 md:border-r flex-col bg-ink-50/40 min-h-0 min-w-0`}>
                 <div className="p-4 bg-white border-b flex justify-between items-center gap-2">
                   <span className="font-black text-[10px] text-ink-400 uppercase tracking-widest flex items-center gap-2 min-w-0">
-                    <Map className="w-3 h-3 flex-shrink-0" /> <span className="truncate">{t('pj.roadmap')}</span>
+                    <MapIcon className="w-3 h-3 flex-shrink-0" /> <span className="truncate">{t('pj.roadmap')}</span>
                   </span>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <button
@@ -466,7 +556,7 @@ export default function ProjectDetail() {
               <RoadmapPopup onClose={() => setRoadmapPopup(false)}>
                 <div className="px-4 pt-4 pb-3 border-b bg-white flex justify-between items-center gap-2 flex-shrink-0">
                   <span className="font-black text-[11px] text-ink-500 uppercase tracking-widest flex items-center gap-2 min-w-0">
-                    <Map className="w-3.5 h-3.5 flex-shrink-0" /> <span className="truncate">{t('pj.roadmap')} · {project.title}</span>
+                    <MapIcon className="w-3.5 h-3.5 flex-shrink-0" /> <span className="truncate">{t('pj.roadmap')} · {project.title}</span>
                   </span>
                   {editable && <button onClick={handleNewPhase} className="btn-primary-sm flex-shrink-0"><Plus className="w-3 h-3" /> {t('pj.phase')}</button>}
                 </div>
@@ -483,6 +573,7 @@ export default function ProjectDetail() {
         <TaskModal
           task={editingTask}
           profiles={profiles}
+          maxDayIndex={maxDayIndex}
           onClose={() => setEditingTask(null)}
           onSave={async (patch) => {
             try { await updateTask(editingTask.id, patch); await refreshProjects(); setEditingTask(null); showToast(t('pj.toast.saved')); }
@@ -504,6 +595,11 @@ export default function ProjectDetail() {
           <ClientDocsPanel projectId={project.id} />
         </Modal>
       )}
+      {showClientTasks && (
+        <Modal title={`Tareas del cliente · ${project.title}`} onClose={() => setShowClientTasks(false)} footer={<></>} maxWidth="max-w-4xl">
+          <ClientTasksPanel project={project} />
+        </Modal>
+      )}
       {showExec && <ExecModal project={project} profiles={profiles} onClose={() => setShowExec(false)} />}
     </section>
   );
@@ -513,29 +609,44 @@ function PhaseCard({ phase, pIdx, total, project, editable, profiles, onChange, 
   const showToast = useToast(s => s.show);
   const { t } = useT();
   const prog = calcPhaseProgress(phase);
+  const maxDayIndex = projectMaxDayIndex(project);
+  const maxWeek = Math.floor(maxDayIndex / 7) + 1;
+  const phaseDur = phase.duration_days != null ? phase.duration_days : (phase.duration_weeks || 1) * 7;
 
   const handleAddTask = async () => {
     try {
+      const c = clampSpanToProject({ start_week: phase.start_week, start_day: phase.start_day || 1, duration: 2 }, maxDayIndex);
       await createTask(phase.id, {
-        name: 'Nueva Actividad', completed: false, assignee_id: project.owner_id, duration: 2, start_week: phase.start_week, start_day: 1, obs: '', position: phase.tasks?.length || 0
+        name: 'Nueva Actividad', progress: 0, assignee_id: project.owner_id,
+        duration: c.duration, start_week: c.start_week, start_day: c.start_day, obs: '', position: phase.tasks?.length || 0
       });
       await onChange();
     } catch (e) { showToast(t('pj.errorPrefix') + e.message, 'error'); }
   };
 
   const toggleTask = async (task, e) => {
+    const done = taskProgress(task) === 100;
+    // Captura host ANTES del await — React recicla el SyntheticEvent y
+    // e.currentTarget queda null después de cualquier await.
+    const host = !done ? (e.currentTarget?.closest('.relative') || e.currentTarget?.parentElement) : null;
     try {
-      await updateTask(task.id, { completed: !task.completed });
-      if (!task.completed) {
-        const host = e.currentTarget.closest('.relative') || e.currentTarget.parentElement;
-        confetti(host, '#10b981');
-      }
+      await updateTask(task.id, { progress: done ? 0 : 100 });
+      if (!done && host) confetti(host, '#10b981');
       await onChange();
     } catch (ex) { showToast(t('pj.errorPrefix') + ex.message, 'error'); }
   };
 
   const patchPhase = async (fieldOrPatch, value) => {
-    const patch = typeof fieldOrPatch === 'string' ? { [fieldOrPatch]: value } : fieldOrPatch;
+    const raw = typeof fieldOrPatch === 'string' ? { [fieldOrPatch]: value } : fieldOrPatch;
+    let patch = raw;
+    if ('start_week' in raw || 'start_day' in raw || 'duration_days' in raw) {
+      const c = clampSpanToProject({
+        start_week: raw.start_week ?? phase.start_week,
+        start_day: raw.start_day ?? (phase.start_day || 1),
+        duration: raw.duration_days ?? phaseDur,
+      }, maxDayIndex);
+      patch = { ...raw, start_week: c.start_week, start_day: c.start_day, duration_days: c.duration, duration_weeks: Math.max(1, Math.min(8, Math.ceil(c.duration / 7))) };
+    }
     try { await updatePhase(phase.id, patch); await onChange(); }
     catch (e) { showToast(t('pj.errorPrefix') + e.message, 'error'); }
   };
@@ -553,14 +664,14 @@ function PhaseCard({ phase, pIdx, total, project, editable, profiles, onChange, 
         <div className="flex-1 min-w-0">
           <input defaultValue={phase.name} disabled={!editable} onBlur={e => e.target.value !== phase.name && patchPhase('name', e.target.value)} className="font-bold text-ink-900 bg-transparent border-none p-0 focus:ring-0 w-full text-sm tracking-tight mb-1.5 outline-none" />
           <div className="flex gap-3 flex-wrap">
-            <NumLabel label={t('pj.startWeek')} value={phase.start_week} max={8} disabled={!editable} onSave={v => patchPhase('start_week', v)} />
+            <NumLabel label={t('pj.startWeek')} value={phase.start_week} max={maxWeek} disabled={!editable} onSave={v => patchPhase('start_week', v)} />
             <NumLabel label={t('pj.startDayShort')} value={phase.start_day || 1} max={7} disabled={!editable} onSave={v => patchPhase('start_day', v)} />
             <NumLabel
               label={t('pj.durationDaysShort')}
-              value={phase.duration_days != null ? phase.duration_days : (phase.duration_weeks || 1) * 7}
-              max={56}
+              value={phaseDur}
+              max={maxDayIndex + 1}
               disabled={!editable}
-              onSave={v => patchPhase({ duration_days: v, duration_weeks: Math.max(1, Math.min(8, Math.ceil(v / 7))) })}
+              onSave={v => patchPhase({ duration_days: v })}
             />
           </div>
         </div>
@@ -575,15 +686,17 @@ function PhaseCard({ phase, pIdx, total, project, editable, profiles, onChange, 
       <div className="divide-y divide-ink-100">
         {phase.tasks?.map((tk) => {
           const assignee = profiles.find(u => u.id === tk.assignee_id);
+          const tp = taskProgress(tk);
+          const done = tp === 100;
           return (
             <div key={tk.id} onClick={() => onEditTask(tk)} className="p-3 hover:bg-violet-50/40 transition flex items-center gap-3 cursor-pointer group relative">
-              <input type="checkbox" checked={tk.completed} onClick={e => e.stopPropagation()} onChange={(e) => toggleTask(tk, e)} className="rounded text-violet-600 h-4 w-4 cursor-pointer" />
+              <input type="checkbox" checked={done} onClick={e => e.stopPropagation()} onChange={(e) => toggleTask(tk, e)} className="rounded text-violet-600 h-4 w-4 cursor-pointer" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   {tk.priority === 'urgent' && <span className="text-[8px] font-black text-red-600 bg-red-100 px-1.5 py-0.5 rounded uppercase">!URG</span>}
                   {tk.priority === 'high' && <span className="text-[8px] font-black text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded uppercase">ALT</span>}
                   {tk.priority === 'low' && <span className="text-[8px] font-black text-ink-500 bg-ink-100 px-1.5 py-0.5 rounded uppercase">BAJA</span>}
-                  <div className={`text-[12px] font-semibold truncate ${tk.completed ? 'line-through text-ink-400' : 'text-ink-700'}`}>{tk.name}</div>
+                  <div className={`text-[12px] font-semibold truncate ${done ? 'line-through text-ink-400' : 'text-ink-700'}`}>{tk.name}</div>
                 </div>
                 <div className="flex gap-2 text-[10px] font-semibold text-ink-400 items-center mt-0.5 flex-wrap">
                   <span className="flex items-center gap-1">
@@ -597,6 +710,12 @@ function PhaseCard({ phase, pIdx, total, project, editable, profiles, onChange, 
                   {tk.subtasks?.length > 0 && <><span className="text-ink-200">•</span><span className="tabular flex items-center gap-0.5"><ListChecks className="w-2.5 h-2.5" />{tk.subtasks.filter(s => s.completed).length}/{tk.subtasks.length}</span></>}
                   {tk.attachments?.length > 0 && <><span className="text-ink-200">•</span><span className="tabular">📎{tk.attachments.length}</span></>}
                   {tk.tags?.length > 0 && tk.tags.map(tg => <span key={tg} className="bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-bold">#{tg}</span>)}
+                </div>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <div className="flex-1 h-1 bg-ink-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-500 ${done ? 'bg-emerald-500' : 'bg-violet-500'}`} style={{ width: tp + '%' }} />
+                  </div>
+                  <span className={`text-[9px] font-black tabular ${done ? 'text-emerald-600' : 'text-violet-600'}`}>{tp}%</span>
                 </div>
               </div>
               <ChevronRight className="w-3.5 h-3.5 text-ink-300 opacity-0 group-hover:opacity-100 transition" />
@@ -698,6 +817,8 @@ function GanttCanvas({ project, editable, onChange, onEditTask, scrollerRef }) {
   const headerRef = useRef(null);
   const bodyRef = useRef(null);
   const [activeWeek, setActiveWeek] = useState(1);
+  const maxDayIndex = projectMaxDayIndex(project);
+  const outOfRangeLeft = (maxDayIndex + 1) * 28;
 
   const scrollToWeek = (weekIdx) => {
     const scroller = scrollerRef?.current;
@@ -817,14 +938,25 @@ function GanttCanvas({ project, editable, onChange, onEditTask, scrollerRef }) {
       </div>
       <div ref={bodyRef} className="relative" style={{ width: 1568 }}>
         {project.phases?.map((ph, pIdx) => (
-          <GanttRow key={ph.id} phase={ph} pIdx={pIdx} editable={editable} onChange={onChange} onEditTask={(tk) => onEditTask(tk, ph.id)} />
+          <GanttRow key={ph.id} phase={ph} pIdx={pIdx} editable={editable} maxDayIndex={maxDayIndex} onChange={onChange} onEditTask={(tk) => onEditTask(tk, ph.id)} />
         ))}
+        {outOfRangeLeft < 1568 && (
+          <div
+            className="absolute top-0 bottom-0 pointer-events-none z-20 border-l-2 border-dashed border-red-300/70"
+            style={{
+              left: outOfRangeLeft,
+              width: 1568 - outOfRangeLeft,
+              background: 'repeating-linear-gradient(45deg, rgba(244,63,94,0.07) 0 8px, rgba(244,63,94,0.14) 8px 16px)',
+            }}
+            title={t('pj.outOfRange')}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function GanttRow({ phase, pIdx, editable, onChange, onEditTask }) { // eslint-disable-line no-unused-vars
+function GanttRow({ phase, pIdx, editable, maxDayIndex = 55, onChange, onEditTask }) { // eslint-disable-line no-unused-vars
   const showToast = useToast(s => s.show);
   const { t } = useT();
   const rowRef = useRef(null);
@@ -838,6 +970,7 @@ function GanttRow({ phase, pIdx, editable, onChange, onEditTask }) { // eslint-d
   const fWidth = durationDays * 28;
   const TOTAL_WIDTH = 8 * 7 * 28;
   const DAY_PX = 28;
+  const RANGE_PX = (maxDayIndex + 1) * DAY_PX; // límite del plazo del proyecto
 
   useEffect(() => {
     if (!rectRef.current) return;
@@ -865,12 +998,12 @@ function GanttRow({ phase, pIdx, editable, onChange, onEditTask }) { // eslint-d
       onDrag() { dragMoved.current = true; },
       onDragEnd: async () => {
         const dx = moveDrag[0].x;
-        const newLeftRaw = Math.max(0, Math.min(TOTAL_WIDTH - fWidth, fLeft + dx));
+        const newLeftRaw = Math.max(0, Math.min(RANGE_PX - fWidth, fLeft + dx));
         const newLeftSnap = Math.round(newLeftRaw / DAY_PX) * DAY_PX;
-        const dayIndex = newLeftSnap / DAY_PX;
+        const dayIndex = Math.min(maxDayIndex, newLeftSnap / DAY_PX);
         const newWeek = Math.min(8, Math.max(1, Math.floor(dayIndex / 7) + 1));
         const newDay = Math.min(7, Math.max(1, (dayIndex % 7) + 1));
-        gsap.to(rect, { x: 0, left: newLeftSnap, duration: 0.3, ease: 'power3.out' });
+        gsap.to(rect, { x: 0, left: dayIndex * DAY_PX, duration: 0.3, ease: 'power3.out' });
         if (newWeek === phase.start_week && newDay === startDay) return;
         try { await updatePhase(phase.id, { start_week: newWeek, start_day: newDay }); await onChange(); }
         catch (e) { showToast(t('pj.errorPrefix') + e.message, 'error'); }
@@ -883,12 +1016,14 @@ function GanttRow({ phase, pIdx, editable, onChange, onEditTask }) { // eslint-d
       cursor: 'ew-resize',
       onPress(e) { e.stopPropagation(); startW = rect.offsetWidth; },
       onDrag() {
-        const newW = Math.max(DAY_PX, Math.min(TOTAL_WIDTH - parseFloat(rect.style.left || 0), startW + this.x));
+        const newW = Math.max(DAY_PX, Math.min(RANGE_PX - parseFloat(rect.style.left || 0), startW + this.x));
         rect.style.width = newW + 'px';
         gsap.set(resizeHandleRef.current, { x: 0 });
       },
       onDragEnd: async () => {
-        const days = Math.max(1, Math.min(56, Math.round(rect.offsetWidth / DAY_PX)));
+        const leftIdx = Math.round(parseFloat(rect.style.left || 0) / DAY_PX);
+        const maxDays = Math.max(1, maxDayIndex - leftIdx + 1);
+        const days = Math.max(1, Math.min(maxDays, Math.round(rect.offsetWidth / DAY_PX)));
         gsap.to(rect, { width: days * DAY_PX, duration: 0.3, ease: 'power3.out' });
         if (days === durationDays) return;
         const weeks = Math.max(1, Math.min(8, Math.ceil(days / 7)));
@@ -902,7 +1037,7 @@ function GanttRow({ phase, pIdx, editable, onChange, onEditTask }) { // eslint-d
       if (resizeDrag) resizeDrag.forEach(d => d.kill());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editable, phase.id, fLeft, fWidth, startDay, durationDays]);
+  }, [editable, phase.id, fLeft, fWidth, startDay, durationDays, maxDayIndex]);
 
   return (
     <div ref={rowRef} className="flex h-[280px] border-b relative items-start pt-10 gantt-grid" style={{ width: TOTAL_WIDTH }}>
@@ -930,13 +1065,13 @@ function GanttRow({ phase, pIdx, editable, onChange, onEditTask }) { // eslint-d
         )}
       </div>
       {phase.tasks?.map((tk, tIdx) => (
-        <GanttBar key={tk.id} task={tk} tIdx={tIdx} rowRef={rowRef} editable={editable} onChange={onChange} onEditTask={onEditTask} />
+        <GanttBar key={tk.id} task={tk} tIdx={tIdx} rowRef={rowRef} editable={editable} maxDayIndex={maxDayIndex} onChange={onChange} onEditTask={onEditTask} />
       ))}
     </div>
   );
 }
 
-function GanttBar({ task, tIdx, rowRef, editable, onChange, onEditTask }) {
+function GanttBar({ task, tIdx, rowRef, editable, maxDayIndex = 55, onChange, onEditTask }) {
   const showToast = useToast(s => s.show);
   const barRef = useRef(null);
   const handleRef = useRef(null);
@@ -945,6 +1080,14 @@ function GanttBar({ task, tIdx, rowRef, editable, onChange, onEditTask }) {
   const left = (((task.start_week - 1) * 7) + (task.start_day - 1)) * 28;
   const width = task.duration * 28;
   const top = 50 + (tIdx * 44);
+  const RANGE_PX = (maxDayIndex + 1) * 28;
+
+  // Tras un refresh de datos, React reaplica `left`/`width` por estilo inline
+  // pero GSAP deja un transform `x` residual del arrastre => doble offset.
+  // Resetear `x` aquí mantiene la barra exactamente donde la dejó el drag.
+  useEffect(() => {
+    if (barRef.current) gsap.set(barRef.current, { x: 0 });
+  }, [left, width]);
 
   useEffect(() => {
     if (!editable || !barRef.current || reduced) return;
@@ -959,11 +1102,16 @@ function GanttBar({ task, tIdx, rowRef, editable, onChange, onEditTask }) {
       onDrag() { dragMoved.current = true; },
       onDragEnd: async () => {
         const dx = moveDrag[0].x;
-        const newLeftPx = Math.max(0, Math.round((left + dx) / 28) * 28);
+        const newLeftPx = Math.max(0, Math.min(RANGE_PX - width, Math.round((left + dx) / 28) * 28));
         const dayIndex = newLeftPx / 28;
         const newWeek = Math.min(8, Math.max(1, Math.floor(dayIndex / 7) + 1));
         const newDay = Math.min(7, Math.max(1, (dayIndex % 7) + 1));
-        gsap.to(bar, { x: newLeftPx - left, duration: 0.25, ease: 'power3.out' });
+        // Snap instantáneo; el refresh posterior reaplica `left` y el efecto resetea `x`.
+        gsap.set(bar, { x: newLeftPx - left });
+        if (newWeek === task.start_week && newDay === task.start_day) {
+          gsap.to(bar, { x: 0, duration: 0.2, ease: 'power3.out' });
+          return;
+        }
         try { await updateTask(task.id, { start_week: newWeek, start_day: newDay }); await onChange(); }
         catch (e) { showToast('Error: ' + e.message, 'error'); }
       }
@@ -973,10 +1121,12 @@ function GanttBar({ task, tIdx, rowRef, editable, onChange, onEditTask }) {
     const resizeDrag = handle ? Draggable.create(handle, {
       type: 'x', cursor: 'ew-resize',
       onPress(e) { e.stopPropagation(); startW = bar.offsetWidth; },
-      onDrag() { const newW = Math.max(28, startW + this.x); bar.style.width = newW + 'px'; gsap.set(handle, { x: 0 }); },
+      onDrag() { const newW = Math.max(28, Math.min(RANGE_PX - left, startW + this.x)); bar.style.width = newW + 'px'; gsap.set(handle, { x: 0 }); },
       onDragEnd: async () => {
-        const days = Math.max(1, Math.round(bar.offsetWidth / 28));
+        const maxDays = Math.max(1, maxDayIndex - (left / 28) + 1);
+        const days = Math.max(1, Math.min(maxDays, Math.round(bar.offsetWidth / 28)));
         bar.style.width = (days * 28) + 'px';
+        if (days === task.duration) return;
         try { await updateTask(task.id, { duration: days }); await onChange(); }
         catch (e) { showToast('Error: ' + e.message, 'error'); }
       }
@@ -987,7 +1137,7 @@ function GanttBar({ task, tIdx, rowRef, editable, onChange, onEditTask }) {
       if (resizeDrag && resizeDrag[0]) resizeDrag[0].kill();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [task.id, left, width, editable, onChange, rowRef]);
+  }, [task.id, left, width, editable, onChange, rowRef, maxDayIndex]);
 
   const handleClick = (e) => {
     if (dragMoved.current) { dragMoved.current = false; return; }
@@ -1005,11 +1155,11 @@ function GanttBar({ task, tIdx, rowRef, editable, onChange, onEditTask }) {
   );
 }
 
-function TaskModal({ task, profiles, onClose, onSave, onDelete }) {
+function TaskModal({ task, profiles, maxDayIndex = 55, onClose, onSave, onDelete }) {
   const { profile: currentProfile } = useAuth();
   const { t: tr } = useT();
   const showToast = useToast(s => s.show);
-  const [t, setT] = useState({ ...task, subtasks: task.subtasks || [], tags: task.tags || [], priority: task.priority || 'normal', attachments: task.attachments || [] });
+  const [t, setT] = useState({ ...task, subtasks: task.subtasks || [], tags: task.tags || [], priority: task.priority || 'normal', attachments: task.attachments || [], progress: Number.isFinite(task.progress) ? task.progress : (task.completed ? 100 : 0) });
   const [newSub, setNewSub] = useState('');
   const [newTag, setNewTag] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -1050,10 +1200,40 @@ function TaskModal({ task, profiles, onClose, onSave, onDelete }) {
         <>
           <button onClick={onDelete} className="btn-danger mr-auto"><Trash2 className="w-3.5 h-3.5" /></button>
           <button onClick={onClose} className="btn-ghost">{tr('common.cancel')}</button>
-          <button onClick={() => onSave({ name: t.name, assignee_id: t.assignee_id || null, duration: clampDuration(t.duration), start_week: clampWeek(t.start_week), start_day: clampDay(t.start_day), obs: t.obs, subtasks: t.subtasks, tags: t.tags, priority: t.priority, attachments: t.attachments })} className="btn-primary">{tr('common.save')}</button>
+          <button onClick={() => {
+            const span = clampSpanToProject({ start_week: t.start_week, start_day: t.start_day, duration: t.duration }, maxDayIndex);
+            onSave({ name: t.name, assignee_id: t.assignee_id || null, duration: span.duration, start_week: span.start_week, start_day: span.start_day, progress: Math.max(0, Math.min(100, parseInt(t.progress) || 0)), obs: t.obs, subtasks: t.subtasks, tags: t.tags, priority: t.priority, attachments: t.attachments });
+          }} className="btn-primary">{tr('common.save')}</button>
         </>
       )}>
       <Field label={tr('pj.task.name')}><input value={t.name} onChange={e => setT({ ...t, name: e.target.value })} className="input-light" /></Field>
+
+      <Field label={`${tr('pj.task.progress')} · ${t.progress}%`}>
+        <div className="flex items-center gap-3">
+          <input
+            type="range" min="0" max="100" step="5" value={t.progress}
+            onChange={e => setT({ ...t, progress: parseInt(e.target.value) })}
+            className="flex-1 accent-violet-600 cursor-pointer"
+          />
+          <input
+            type="number" min="0" max="100" value={t.progress}
+            onChange={e => setT({ ...t, progress: e.target.value })}
+            onBlur={e => setT(s => ({ ...s, progress: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) }))}
+            className="input-light w-20 text-center"
+          />
+          <button
+            type="button"
+            onClick={() => setT(s => ({ ...s, progress: s.progress === 100 ? 0 : 100 }))}
+            className={`text-[11px] font-bold px-3 py-2 rounded-xl transition whitespace-nowrap ${t.progress === 100 ? 'bg-emerald-100 text-emerald-700' : 'bg-ink-100 text-ink-500 hover:bg-violet-100 hover:text-violet-700'}`}
+          >
+            {t.progress === 100 ? tr('pj.task.done') : tr('pj.task.markDone')}
+          </button>
+        </div>
+        <div className="mt-1.5 h-1.5 bg-ink-100 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full transition-all duration-300 ${t.progress === 100 ? 'bg-emerald-500' : 'bg-violet-500'}`} style={{ width: t.progress + '%' }} />
+        </div>
+      </Field>
+
       <div className="grid grid-cols-3 gap-3">
         <Field label={tr('pj.task.assignee')}>
           <select value={t.assignee_id || ''} onChange={e => setT({ ...t, assignee_id: e.target.value })} className="input-light">
@@ -1329,6 +1509,7 @@ function FullGanttModal({ project, profiles, editable, onChange, onEditTask, onC
   const overlayRef = useRef(null);
   const cardRef = useRef(null);
   const fullScrollerRef = useRef(null);
+  const profileMap = useMemo(() => new Map(profiles.map(u => [u.id, u])), [profiles]);
 
   useEffect(() => {
     if (reduced) return;
@@ -1381,7 +1562,7 @@ function FullGanttModal({ project, profiles, editable, onChange, onEditTask, onC
               <div key={ph.id}>
                 <div className="text-[11px] font-bold text-violet-700 bg-violet-50 p-2 rounded-lg mt-3">{ph.name}</div>
                 {ph.tasks?.map(tk => {
-                  const ass = profiles.find(u => u.id === tk.assignee_id)?.name || t('common.unassigned');
+                  const ass = profileMap.get(tk.assignee_id)?.name || t('common.unassigned');
                   return (
                     <div
                       key={tk.id}
@@ -1462,7 +1643,7 @@ function RoadmapPopup({ children, onClose }) {
       >
         <div className="px-5 py-3 bg-gradient-to-r from-violet-700 to-fuchsia-700 text-white flex justify-between items-center flex-shrink-0">
           <div className="flex items-center gap-2 min-w-0">
-            <Map className="w-4 h-4 flex-shrink-0" />
+            <MapIcon className="w-4 h-4 flex-shrink-0" />
             <span className="text-[12px] font-black uppercase tracking-widest truncate">{t('pj.expandedView')}</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">

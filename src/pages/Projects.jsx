@@ -6,9 +6,10 @@ import { Draggable } from 'gsap/Draggable';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, vencimiento, isFinalStatus, effectiveHealth } from '../lib/utils';
+import { calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, vencimiento, isFinalStatus, effectiveHealth, fmtMoney } from '../lib/utils';
 import { reduced } from '../lib/motion';
-import { createProject } from '../lib/data';
+import { createProject, friendlyDbError } from '../lib/data';
+import { logger } from '../lib/logger';
 import { uploadContract } from '../lib/storage';
 import { useToast } from '../lib/toast';
 import Avatar from '../components/Avatar.jsx';
@@ -94,6 +95,9 @@ export default function Projects() {
     [projects, profile, can]
   );
 
+  const profileMap = useMemo(() => new Map(profiles.map(u => [u.id, u])), [profiles]);
+  const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
+
   // Filtros + búsqueda + sort
   const rows = useMemo(() => {
     let list = visiblePool;
@@ -107,8 +111,8 @@ export default function Projects() {
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(p => {
-        const owner = profiles.find(u => u.id === p.owner_id);
-        const cat = categories.find(c => c.id === p.category_id);
+        const owner = profileMap.get(p.owner_id);
+        const cat = categoryMap.get(p.category_id);
         const blob = `${p.title} ${p.goal || ''} ${p.client_lead || ''} ${p.observation || ''} ${owner?.name || ''} ${p.owner_label || ''} ${cat?.name || ''}`.toLowerCase();
         return blob.includes(q);
       });
@@ -119,8 +123,8 @@ export default function Projects() {
         case 'title':
           av = a.title || ''; bv = b.title || ''; break;
         case 'category':
-          av = categories.find(c => c.id === a.category_id)?.name || '';
-          bv = categories.find(c => c.id === b.category_id)?.name || '';
+          av = categoryMap.get(a.category_id)?.name || '';
+          bv = categoryMap.get(b.category_id)?.name || '';
           break;
         case 'client_lead':
           av = a.client_lead || ''; bv = b.client_lead || ''; break;
@@ -135,8 +139,8 @@ export default function Projects() {
           break;
         }
         case 'owner':
-          av = profiles.find(u => u.id === a.owner_id)?.name || a.owner_label || '';
-          bv = profiles.find(u => u.id === b.owner_id)?.name || b.owner_label || '';
+          av = profileMap.get(a.owner_id)?.name || a.owner_label || '';
+          bv = profileMap.get(b.owner_id)?.name || b.owner_label || '';
           break;
         case 'start_date':
           av = a.start_date || ''; bv = b.start_date || ''; break;
@@ -156,7 +160,7 @@ export default function Projects() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return list;
-  }, [visiblePool, profiles, categories, filterCat, filterStatus, filterOwner, filterOverdue, search, sortBy, sortDir]);
+  }, [visiblePool, profileMap, categoryMap, filterCat, filterStatus, filterOwner, filterOverdue, search, sortBy, sortDir]);
 
   // Handlers stat cards: click toggle filtro / reset.
   const resetAllFilters = () => {
@@ -207,7 +211,11 @@ export default function Projects() {
       setShowNew(false);
       setNewMode('inline');
       navigate(`/projects/${newP.id}`);
-    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
+    } catch (e) {
+      const { key, raw } = friendlyDbError(e);
+      logger.error('createProject failed', raw, e);
+      showToast(t(key), 'error');
+    }
   };
 
   const cancelNew = () => { setShowNew(false); setNewMode('inline'); };
@@ -277,12 +285,12 @@ export default function Projects() {
                 )}
                 {filterCat && (
                   <button className="pm-filter-chip" onClick={() => setFilterCat('')}>
-                    {categories.find(c => c.id === filterCat)?.name || filterCat} <span aria-hidden>×</span>
+                    {categoryMap.get(filterCat)?.name || filterCat} <span aria-hidden>×</span>
                   </button>
                 )}
                 {filterOwner && (
                   <button className="pm-filter-chip" onClick={() => setFilterOwner('')}>
-                    {filterOwner === '__none' ? t('projects.unassigned') : (profiles.find(u => u.id === filterOwner)?.name || filterOwner)} <span aria-hidden>×</span>
+                    {filterOwner === '__none' ? t('projects.unassigned') : (profileMap.get(filterOwner)?.name || filterOwner)} <span aria-hidden>×</span>
                   </button>
                 )}
                 {search && (
@@ -342,8 +350,8 @@ export default function Projects() {
                 </thead>
                 <tbody>
                   {rows.map(p => {
-                    const cat = categories.find(c => c.id === p.category_id);
-                    const owner = profiles.find(u => u.id === p.owner_id);
+                    const cat = categoryMap.get(p.category_id);
+                    const owner = profileMap.get(p.owner_id);
                     const ownerName = owner?.name || p.owner_label || '';
                     const prog = calcProjectProgress(p);
                     const v = vencimiento(p);
@@ -472,6 +480,7 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
     observation: '',
     project_value: '',
     project_hours: '',
+    currency: 'COP',
     notification_email: ''
   });
   // Owner unificado: ON → usa owner_id, OFF → usa owner_label (responsable sin cuenta).
@@ -584,6 +593,7 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
       observation: form.observation.trim(),
       project_value: toNum(form.project_value),
       project_hours: toNum(form.project_hours),
+      currency: form.currency || 'COP',
       notification_email: form.notification_email.trim() || null
     });
   };
@@ -593,10 +603,6 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
   const _hrs = parseFloat(form.project_hours);
   const hourlyRate = (Number.isFinite(_val) && _val > 0 && Number.isFinite(_hrs) && _hrs > 0)
     ? _val / _hrs : null;
-  const fmtMoney = (n) => {
-    if (!Number.isFinite(n)) return '—';
-    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
-  };
 
   const selectedCat = categories.find(c => c.id === form.category_id);
   const catHelp = selectedCat ? PROJECT_CATEGORY_HELP[selectedCat.name] : null;
@@ -759,12 +765,23 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
             <p className="text-[10px] font-black text-violet-700 uppercase tracking-widest">{t('projects.field.costSection')}</p>
             {hourlyRate != null && (
               <span className="text-[11px] font-bold text-violet-700 bg-white border border-violet-200 rounded-full px-2.5 py-1 tabular">
-                ≈ {fmtMoney(hourlyRate)} {t('projects.field.perHour')}
+                ≈ {fmtMoney(hourlyRate, form.currency || 'COP')} {t('projects.field.perHour')}
               </span>
             )}
           </div>
           <p className="text-[11px] text-ink-500 mb-3">{t('projects.field.costHelp')}</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <NewField label={t('projects.field.currency')}>
+              <select
+                value={form.currency || 'COP'}
+                onChange={e => set('currency', e.target.value)}
+                className="input-light"
+              >
+                <option value="COP">{t('projects.currency.COP')}</option>
+                <option value="USD">{t('projects.currency.USD')}</option>
+                <option value="BRL">{t('projects.currency.BRL')}</option>
+              </select>
+            </NewField>
             <NewField label={t('projects.field.value')}>
               <input
                 type="number"

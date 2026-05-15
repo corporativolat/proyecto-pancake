@@ -44,12 +44,15 @@ export default function Team() {
   }, [myProjects.length, myTasks.length, myProg]);
 
   const toggle = async (task, hostEvent) => {
+    // Captura host ANTES del await — React recicla SyntheticEvent.
+    const host = !task.completed
+      ? (hostEvent.currentTarget?.closest('.relative') || hostEvent.currentTarget?.parentElement)
+      : null;
     try {
-      await updateTask(task.id, { completed: !task.completed });
-      if (!task.completed) {
-        const host = hostEvent.currentTarget.closest('.relative') || hostEvent.currentTarget.parentElement;
-        confetti(host, '#10b981');
-      }
+      // Trigger sync_task_completed (mig-22) deriva completed := (progress=100).
+      // Escribir progress; completed lo setea el trigger.
+      await updateTask(task.id, { progress: task.completed ? 0 : 100 });
+      if (!task.completed && host) confetti(host, '#10b981');
       await refreshProjects();
       showToast(!task.completed ? t('team.toast.completed') : t('team.toast.reactivated'));
     } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }

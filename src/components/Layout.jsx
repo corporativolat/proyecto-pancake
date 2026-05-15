@@ -74,7 +74,7 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
           type="button"
           aria-label={t('layout.closeMenu')}
           onClick={() => setMobileOpen(false)}
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-30 bg-black/70 md:hidden"
         />
       )}
       <aside className={`w-72 sidebar-bg flex flex-col z-40 fixed md:relative inset-y-0 left-0 transition-transform duration-300 ease-out ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>

@@ -35,7 +35,7 @@ export default function Comments({ projectId }) {
 
   const load = async () => {
     try { setComments(await fetchComments(projectId)); }
-    catch (e) { logger.error(e); }
+    catch (e) { logger.error(e); showToast('No se pudieron cargar los comentarios: ' + e.message, 'error'); }
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -43,7 +43,9 @@ export default function Comments({ projectId }) {
 
   useEffect(() => {
     if (reduced || !listRef.current) return;
-    gsap.fromTo(listRef.current.querySelectorAll('[data-c]'), { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: 0.35, ease: 'power3.out', stagger: 0.04 });
+    const nodes = listRef.current.querySelectorAll('[data-c]');
+    if (nodes.length === 0) return;
+    gsap.fromTo(nodes, { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: 0.35, ease: 'power3.out', stagger: 0.04 });
   }, [comments.length]);
 
   const send = async (e) => {

@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from './supabase';
+import { logger } from './logger';
 
 const AuthCtx = createContext(null);
 
@@ -34,29 +35,46 @@ export function AuthProvider({ children }) {
     if (!session) { setProfile(null); setLoading(false); return; }
     setLoading(true);
     supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
-      .then(({ data }) => { if (mounted) { setProfile(data); setLoading(false); } });
+      .then(({ data, error }) => {
+        if (!mounted) return;
+        if (error) { logger.error('profile load', error); setProfile(null); }
+        else setProfile(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (!mounted) return;
+        logger.error('profile load', err);
+        setProfile(null);
+        setLoading(false);
+      });
     return () => { mounted = false; };
   }, [session]);
 
-  const signIn = async (email, password) => {
+  const signIn = useCallback(async (email, password) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-  };
-  const signUp = async (email, password, name) => {
+  }, []);
+  const signUp = useCallback(async (email, password, name) => {
     const { error } = await supabase.auth.signUp({ email, password, options: { data: { name } } });
     if (error) throw error;
-  };
-  const signOut = async () => { await supabase.auth.signOut(); };
+  }, []);
+  const signOut = useCallback(async () => { await supabase.auth.signOut(); }, []);
+  const refresh = useCallback(() => (
+    session && supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
+      .then(({ data }) => setProfile(data))
+      .catch((err) => logger.error('profile refresh', err))
+  ), [session]);
 
-  const can = (perm) => !!(profile && PERMS[profile.role]?.[perm]);
+  const can = useCallback((perm) => !!(profile && PERMS[profile.role]?.[perm]), [profile]);
   const isClient = !!profile && isClientRole(profile.role);
   const isStaff = !!profile && isStaffRole(profile.role);
 
-  return (
-    <AuthCtx.Provider value={{ session, profile, loading, signIn, signUp, signOut, can, isClient, isStaff, refresh: () => session && supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle().then(({data}) => setProfile(data)) }}>
-      {children}
-    </AuthCtx.Provider>
+  const value = useMemo(
+    () => ({ session, profile, loading, signIn, signUp, signOut, can, isClient, isStaff, refresh }),
+    [session, profile, loading, signIn, signUp, signOut, can, isClient, isStaff, refresh]
   );
+
+  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
 export const useAuth = () => useContext(AuthCtx);

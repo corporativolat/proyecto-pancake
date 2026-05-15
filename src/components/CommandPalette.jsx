@@ -19,6 +19,7 @@ export default function CommandPalette({ open, onClose }) {
   const inputRef = useRef(null);
   const cardRef = useRef(null);
   const overlayRef = useRef(null);
+  const downOnOverlayRef = useRef(false);
 
   useEffect(() => {
     if (open && !reduced) {
@@ -61,9 +62,15 @@ export default function CommandPalette({ open, onClose }) {
     if (e.key === 'Enter') { e.preventDefault(); items[idx]?.action(); close(); }
   };
 
+  const onOverlayDown = (e) => { downOnOverlayRef.current = (e.target === overlayRef.current); };
+  const onOverlayUp = (e) => {
+    if (downOnOverlayRef.current && e.target === overlayRef.current) close();
+    downOnOverlayRef.current = false;
+  };
+
   if (!open) return null;
   return (
-    <div ref={overlayRef} className="cmdk-overlay" onClick={(e) => { if (e.target === overlayRef.current) close(); }}>
+    <div ref={overlayRef} className="cmdk-overlay" onMouseDown={onOverlayDown} onMouseUp={onOverlayUp}>
       <div ref={cardRef} className="cmdk-card">
         <div className="flex items-center gap-2 px-4 border-b border-ink-100">
           <Search className="w-4 h-4 text-ink-400" />

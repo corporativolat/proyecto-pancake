@@ -7,6 +7,7 @@ import { useT } from '../lib/i18n.jsx';
 export default function Modal({ title, children, onClose, onSave, footer, maxWidth = 'max-w-2xl' }) {
   const overlayRef = useRef(null);
   const cardRef = useRef(null);
+  const downOnOverlayRef = useRef(false);
   const { t } = useT();
 
   useEffect(() => {
@@ -21,8 +22,17 @@ export default function Modal({ title, children, onClose, onSave, footer, maxWid
     gsap.to(overlayRef.current, { opacity: 0, duration: 0.2, delay: 0.05, onComplete: onClose });
   };
 
+  // Cierra solo si el usuario hizo mousedown Y mouseup en el overlay (no si
+  // arrastra desde dentro al backdrop al seleccionar texto, ni si suelta el
+  // mouse dentro del contenido tras un click iniciado fuera).
+  const onMouseDown = (e) => { downOnOverlayRef.current = (e.target === overlayRef.current); };
+  const onMouseUp = (e) => {
+    if (downOnOverlayRef.current && e.target === overlayRef.current) close();
+    downOnOverlayRef.current = false;
+  };
+
   return (
-    <div ref={overlayRef} className="modal-overlay" onClick={(e) => { if (e.target === overlayRef.current) close(); }}>
+    <div ref={overlayRef} className="modal-overlay" onMouseDown={onMouseDown} onMouseUp={onMouseUp}>
       <div ref={cardRef} className={`modal-card ${maxWidth}`}>
         <div className="modal-header">
           <h3 className="text-lg font-black tracking-tight">{title}</h3>

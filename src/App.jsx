@@ -66,21 +66,38 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, profile?.id, refreshAll, isClient]);
 
-  // Realtime: refresh projects on changes (debounced para amortiguar ráfagas)
+  // Realtime: refresh projects on changes (debounced para amortiguar ráfagas).
+  // Si el documento NO está visible, se aplaza el refresh hasta que el usuario
+  // vuelva — así un Ctrl+C/V/Alt+Tab a otra ventana no machaca el estado local
+  // de formularios/modales mientras el usuario escribe.
   useEffect(() => {
     if (!session || isClient) return;
     let timer = null;
+    let pending = false;
+    const fire = () => { pending = false; refreshProjects(); };
     const trigger = () => {
+      if (document.hidden) { pending = true; return; }
       clearTimeout(timer);
-      timer = setTimeout(() => { refreshProjects(); }, 350);
+      timer = setTimeout(fire, 350);
     };
-    const ch = supabase.channel('pro_gestion_changes')
+    const onVisible = () => {
+      if (!document.hidden && pending) {
+        clearTimeout(timer);
+        timer = setTimeout(fire, 350);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    const ch = supabase.channel(`pro_gestion_changes_${Math.random().toString(36).slice(2)}`)
       .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'projects' }, trigger)
       .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'phases' }, trigger)
       .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'tasks' }, trigger)
       .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'milestones' }, trigger)
       .subscribe();
-    return () => { clearTimeout(timer); supabase.removeChannel(ch); };
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      supabase.removeChannel(ch);
+    };
   }, [session, refreshProjects, isClient]);
 
   useEffect(() => {

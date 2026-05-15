@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart3, Maximize2, ExternalLink } from 'lucide-react';
 import gsap from 'gsap';
-import { calcProjectProgress, healthSignal } from '../lib/utils';
+import { calcProjectProgress, effectiveHealth } from '../lib/utils';
 import { reduced } from '../lib/motion';
 import TeamMetricsModal from './TeamMetricsModal.jsx';
 import { useT } from '../lib/i18n.jsx';
@@ -15,7 +15,7 @@ function buildProjectMetrics(projects) {
     const tasksTotal = tasks.length;
     const tasksDone = tasks.filter(t => t.completed).length;
     const progress = calcProjectProgress(p);
-    const health = healthSignal(p, progress);
+    const health = effectiveHealth(p, progress);
     return {
       id: p.id,
       title: p.title || '—',

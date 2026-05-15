@@ -1,35 +1,50 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar as CalIcon, ChevronLeft, ChevronRight, PlayCircle, MapPin, Truck, Flag, ArrowRight } from 'lucide-react';
+import { Calendar as CalIcon, ChevronLeft, ChevronRight, PlayCircle, MapPin, Truck, Flag, ArrowRight, Layers, ListTodo, AlertTriangle } from 'lucide-react';
 import gsap from 'gsap';
 import { useAuth } from '../../lib/auth.jsx';
 import { supabase } from '../../lib/supabase';
 import { reduced } from '../../lib/motion';
+import { calcPhaseProgress } from '../../lib/utils';
 
 const DOW = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 const KIND_META = {
-  start:     { Icon: PlayCircle, color: 'violet',  label: 'Inicio' },
-  end_proj:  { Icon: MapPin,     color: 'amber',   label: 'Fin proyectado' },
-  delivery:  { Icon: Truck,      color: 'emerald', label: 'Entrega' },
-  milestone: { Icon: Flag,       color: 'blue',    label: 'Hito' }
+  start:     { Icon: PlayCircle,    color: 'violet',  label: 'Inicio' },
+  phase:     { Icon: Layers,        color: 'fuchsia', label: 'Etapa' },
+  end_proj:  { Icon: MapPin,        color: 'amber',   label: 'Fin proyectado' },
+  delivery:  { Icon: Truck,         color: 'emerald', label: 'Entrega' },
+  milestone: { Icon: Flag,          color: 'blue',    label: 'Hito' },
+  task:      { Icon: ListTodo,      color: 'red',     label: 'Tarea pendiente' },
+  task_overdue: { Icon: AlertTriangle, color: 'red',  label: 'Tarea vencida' }
 };
 
 const COLOR_BG = {
   violet:  'bg-violet-500',
+  fuchsia: 'bg-fuchsia-500',
   amber:   'bg-amber-500',
   emerald: 'bg-emerald-500',
   blue:    'bg-blue-500',
+  red:     'bg-red-500',
   ink:     'bg-ink-300'
 };
 const COLOR_SOFT = {
   violet:  'bg-violet-100 text-violet-700',
+  fuchsia: 'bg-fuchsia-100 text-fuchsia-700',
   amber:   'bg-amber-100 text-amber-700',
   emerald: 'bg-emerald-100 text-emerald-700',
   blue:    'bg-blue-100 text-blue-700',
+  red:     'bg-red-100 text-red-700',
   ink:     'bg-ink-100 text-ink-600'
 };
+
+// Suma `n` días a una fecha ISO (yyyy-mm-dd) y devuelve ISO.
+function addDays(iso, n) {
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export default function PortalCalendar() {
   const { profile } = useAuth();
@@ -47,12 +62,16 @@ export default function PortalCalendar() {
   useEffect(() => {
     if (!profile?.id) return;
     let cancelled = false;
-    (async () => {
+    const load = async () => {
       const { data: ps } = await supabase.from('projects').select('id, title, start_date, projected_end_date, delivery_date, status').eq('client_id', profile.id);
       const ids = (ps || []).map(p => p.id);
-      const { data: ms } = ids.length
-        ? await supabase.from('milestones').select('id, project_id, name, target_date, completed').in('project_id', ids)
-        : { data: [] };
+      const [{ data: ms }, { data: phs }, { data: cts }] = ids.length
+        ? await Promise.all([
+            supabase.from('milestones').select('id, project_id, name, target_date, completed').in('project_id', ids),
+            supabase.from('phases').select('id, project_id, name, start_week, start_day, duration_days, duration_weeks, tasks(progress, completed)').in('project_id', ids),
+            supabase.from('client_tasks').select('id, project_id, title, priority, due_date, start_date, status').eq('assigned_to', profile.id),
+          ])
+        : [{ data: [] }, { data: [] }, { data: [] }];
       const out = [];
       (ps || []).forEach(p => {
         if (p.start_date)         out.push({ kind: 'start',    date: p.start_date,         label: p.title, projectId: p.id, projectTitle: p.title });
@@ -63,9 +82,47 @@ export default function PortalCalendar() {
         const pj = (ps || []).find(p => p.id === m.project_id);
         out.push({ kind: 'milestone', date: m.target_date, label: m.name, projectId: m.project_id, projectTitle: pj?.title || '', done: m.completed });
       });
+      // Etapas: posición relativa al start_date del proyecto -> fecha real + progreso.
+      (phs || []).forEach(ph => {
+        const pj = (ps || []).find(p => p.id === ph.project_id);
+        if (!pj?.start_date) return;
+        const dayIndex = ((ph.start_week || 1) - 1) * 7 + ((ph.start_day || 1) - 1);
+        const date = addDays(pj.start_date, dayIndex);
+        const prog = calcPhaseProgress(ph);
+        out.push({ kind: 'phase', date, label: ph.name, projectId: ph.project_id, projectTitle: pj.title, progress: prog, done: prog === 100 });
+      });
+      // Tareas del cliente: se muestran SIEMPRE en su due_date (fecha de entrega
+      // requerida). Las ya entregadas/aprobadas se marcan `done`. Las vencidas
+      // sin entregar reciben kind especial para badge rojo.
+      const todayStr = new Date().toISOString().split('T')[0];
+      (cts || []).forEach(ct => {
+        if (!ct.due_date) return;
+        const pj = (ps || []).find(p => p.id === ct.project_id);
+        const settled = ct.status === 'entregado' || ct.status === 'aprobado';
+        const overdue = !settled && ct.due_date < todayStr;
+        out.push({
+          kind: overdue ? 'task_overdue' : 'task',
+          date: ct.due_date,
+          label: ct.title,
+          projectId: ct.project_id,
+          projectTitle: pj?.title || '',
+          done: settled,
+          priority: ct.priority,
+          status: ct.status
+        });
+      });
       if (!cancelled) { setEvents(out.filter(e => !!e.date)); setLoading(false); }
-    })();
-    return () => { cancelled = true; };
+    };
+    load();
+    const ch = supabase
+      .channel(`portal-cal-${profile.id}-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'projects', filter: `client_id=eq.${profile.id}` }, () => { if (!cancelled) load(); })
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'phases' }, () => { if (!cancelled) load(); })
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'tasks' }, () => { if (!cancelled) load(); })
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'milestones' }, () => { if (!cancelled) load(); })
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'client_tasks', filter: `assigned_to=eq.${profile.id}` }, () => { if (!cancelled) load(); })
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
   }, [profile?.id]);
 
   useEffect(() => {
@@ -227,6 +284,7 @@ export default function PortalCalendar() {
 function EventRow({ e, onClick, compact }) {
   const meta = KIND_META[e.kind] || KIND_META.start;
   const { Icon } = meta;
+  const isTask = e.kind === 'task' || e.kind === 'task_overdue';
   return (
     <li>
       <button onClick={onClick}
@@ -235,10 +293,23 @@ function EventRow({ e, onClick, compact }) {
           <Icon className="w-4 h-4" />
         </span>
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] font-black uppercase tracking-widest text-ink-400 mb-0.5">{meta.label}</div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-ink-400 mb-0.5 flex items-center gap-1.5">
+            {meta.label}
+            {e.kind === 'phase' && (
+              <span className="text-fuchsia-600 tabular">· {e.progress}%</span>
+            )}
+            {isTask && e.priority === 'urgente' && (
+              <span className="text-red-600 font-black">· URGENTE</span>
+            )}
+          </div>
           <div className={`text-sm font-bold leading-tight ${e.done ? 'line-through text-ink-400' : 'text-ink-800'}`}>{e.label}</div>
-          {!compact && e.projectTitle && e.kind === 'milestone' && (
+          {!compact && e.projectTitle && (e.kind === 'milestone' || e.kind === 'phase' || isTask) && (
             <div className="text-[10px] text-ink-400 mt-0.5 truncate">{e.projectTitle}</div>
+          )}
+          {e.kind === 'phase' && (
+            <div className="mt-1 h-1 bg-ink-100 rounded-full overflow-hidden max-w-[160px]">
+              <div className={`h-full rounded-full ${e.done ? 'bg-emerald-500' : 'bg-fuchsia-500'}`} style={{ width: e.progress + '%' }} />
+            </div>
           )}
           <div className="text-[10px] font-mono text-ink-400 mt-1">{e.date}</div>
         </div>

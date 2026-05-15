@@ -43,7 +43,12 @@ export default function PortalDocuments() {
     if (!profile?.id) return;
     let cancelled = false;
     (async () => { if (!cancelled) await load(); })();
-    return () => { cancelled = true; };
+    const ch = supabase
+      .channel(`portal-docs-${profile.id}-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'documents' }, () => { if (!cancelled) load(); })
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'projects', filter: `client_id=eq.${profile.id}` }, () => { if (!cancelled) load(); })
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
 

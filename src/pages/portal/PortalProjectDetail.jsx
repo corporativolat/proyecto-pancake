@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Flag, FileText, MessageSquare, Upload, Plus, X, Download, CheckCircle2, XCircle, Clock, AlertCircle, Layers, Truck, PlayCircle, MapPin } from 'lucide-react';
+import { ArrowLeft, Calendar, Flag, FileText, MessageSquare, Upload, Plus, X, Download, CheckCircle2, XCircle, Clock, AlertCircle, Layers, Truck, PlayCircle, MapPin, ListTodo, AlertTriangle } from 'lucide-react';
 import gsap from 'gsap';
 import { useAuth } from '../../lib/auth.jsx';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { reduced } from '../../lib/motion';
+import { calcPhaseProgress, calcProjectProgress, taskProgress } from '../../lib/utils';
+import { listClientTasks, deliverClientTask, signedUrlForTaskFile, priorityMeta, statusMeta, dueRelative } from '../../lib/clientTasks';
 
 const STATUS_COLOR = {
   'No iniciado':  'bg-ink-100 text-ink-600',
@@ -34,29 +36,44 @@ export default function PortalProjectDetail() {
   const [phases, setPhases] = useState([]);
   const [milestones, setMilestones] = useState([]);
   const [docs, setDocs] = useState([]);
+  const [clientTasks, setClientTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [adhocOpen, setAdhocOpen] = useState(false);
   const rootRef = useRef(null);
 
   const load = async () => {
-    const [{ data: pj }, { data: ph }, { data: ms }, { data: ds }] = await Promise.all([
+    const [{ data: pj }, { data: ph }, { data: ms }, { data: ds }, ctRaw] = await Promise.all([
       supabase.from('projects').select('*').eq('id', id).maybeSingle(),
-      supabase.from('phases').select('id, name, position').eq('project_id', id).order('position'),
+      supabase.from('phases').select('id, name, position, tasks(id, name, progress, completed, position)').eq('project_id', id).order('position'),
       supabase.from('milestones').select('id, name, target_date, completed').eq('project_id', id).order('target_date'),
-      supabase.from('documents').select('*').eq('project_id', id).order('created_at', { ascending: false })
+      supabase.from('documents').select('*').eq('project_id', id).order('created_at', { ascending: false }),
+      listClientTasks(id).catch(() => [])
     ]);
     setProject(pj);
-    setPhases(ph || []);
+    setPhases((ph || []).map(p => ({
+      ...p,
+      tasks: (p.tasks || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0)),
+    })));
     setMilestones(ms || []);
     setDocs(ds || []);
+    setClientTasks(ctRaw || []);
     setLoading(false);
   };
 
   useEffect(() => {
     let cancelled = false;
     (async () => { if (!cancelled) await load(); })();
-    return () => { cancelled = true; };
+    const ch = supabase
+      .channel(`portal-pj-${id}-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'client_tasks', filter: `project_id=eq.${id}` }, () => { if (!cancelled) load(); })
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'projects', filter: `id=eq.${id}` }, () => { if (!cancelled) load(); })
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'phases', filter: `project_id=eq.${id}` }, () => { if (!cancelled) load(); })
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'tasks' }, () => { if (!cancelled) load(); })
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'milestones', filter: `project_id=eq.${id}` }, () => { if (!cancelled) load(); })
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'documents', filter: `project_id=eq.${id}` }, () => { if (!cancelled) load(); })
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -123,6 +140,26 @@ export default function PortalProjectDetail() {
     window.open(data.signedUrl, '_blank', 'noopener');
   };
 
+  const deliverTask = async ({ task, file }) => {
+    if (!file) return;
+    if (file.size > MAX_MB * 1024 * 1024) { showToast(`Archivo supera ${MAX_MB} MB`, 'error'); return; }
+    setBusyId('ct-' + task.id);
+    try {
+      await deliverClientTask({ task, file });
+      showToast('Entrega enviada — tu equipo fue notificado', 'success');
+      await load();
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    finally { setBusyId(null); }
+  };
+
+  const downloadTaskFile = async (task) => {
+    if (!task.file_path) return;
+    try {
+      const url = await signedUrlForTaskFile(task.file_path, 300);
+      window.open(url, '_blank', 'noopener');
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+  };
+
   if (loading) return <DetailSkeleton />;
   if (!project) return (
     <div className="p-10">
@@ -147,44 +184,97 @@ export default function PortalProjectDetail() {
           <span>→</span>
           <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {project.projected_end_date || 'Sin fin'}</span>
         </div>
+        {(() => {
+          const overall = calcProjectProgress({ phases, manual_progress: project.manual_progress });
+          return (
+            <div className="flex items-center gap-3 mt-3 max-w-md">
+              <span className="text-[10px] font-black uppercase tracking-widest text-ink-400">Avance</span>
+              <div className="flex-1 bg-ink-100 h-2 rounded-full overflow-hidden">
+                <div className="progress-fill h-full" style={{ width: overall + '%' }} />
+              </div>
+              <span className="text-xs font-black text-emerald-600 tabular w-10 text-right">{overall}%</span>
+            </div>
+          );
+        })()}
       </header>
 
       <TimelineSection project={project} milestones={milestones} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-        <div className="card-light p-5" data-fade-card>
-          <h2 className="text-xs font-black uppercase tracking-widest text-ink-500 mb-3 flex items-center gap-2"><Flag className="w-3.5 h-3.5" /> Hitos</h2>
-          {milestones.length === 0 ? (
-            <p className="text-xs text-ink-400">Sin hitos definidos.</p>
-          ) : (
-            <ul className="space-y-2">
-              {milestones.map(m => (
-                <li key={m.id} className="flex items-center gap-3 text-sm">
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${m.completed ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-ink-300'}`} />
-                  <span className={`flex-1 ${m.completed ? 'line-through text-ink-400' : 'font-bold'}`}>{m.name}</span>
-                  <span className="text-[11px] text-ink-400 tabular font-mono">{m.target_date || ''}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="card-light p-5" data-fade-card>
-          <h2 className="text-xs font-black uppercase tracking-widest text-ink-500 mb-3 flex items-center gap-2"><Layers className="w-3.5 h-3.5" /> Etapas</h2>
-          {phases.length === 0 ? (
-            <p className="text-xs text-ink-400">Sin etapas.</p>
-          ) : (
-            <ol className="space-y-2">
-              {phases.map((ph, i) => (
-                <li key={ph.id} className="flex items-center gap-3 text-sm">
-                  <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center flex-shrink-0">{i + 1}</span>
-                  <span className="font-bold">{ph.name}</span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
+      <div className="card-light p-5 mb-5" data-fade-card>
+        <h2 className="text-xs font-black uppercase tracking-widest text-ink-500 mb-3 flex items-center gap-2"><Flag className="w-3.5 h-3.5" /> Hitos</h2>
+        {milestones.length === 0 ? (
+          <p className="text-xs text-ink-400">Sin hitos definidos.</p>
+        ) : (
+          <ul className="space-y-2">
+            {milestones.map(m => (
+              <li key={m.id} className="flex items-center gap-3 text-sm">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${m.completed ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-ink-300'}`} />
+                <span className={`flex-1 ${m.completed ? 'line-through text-ink-400' : 'font-bold'}`}>{m.name}</span>
+                <span className="text-[11px] text-ink-400 tabular font-mono">{m.target_date || ''}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
+
+      <div className="card-light overflow-hidden mb-5" data-fade-card>
+        <div className="px-5 py-4 border-b bg-gradient-to-r from-emerald-50/40 to-transparent">
+          <h2 className="text-xs font-black uppercase tracking-widest text-ink-500 flex items-center gap-2">
+            <Layers className="w-3.5 h-3.5" /> Etapas y actividades
+          </h2>
+        </div>
+        {phases.length === 0 ? (
+          <p className="px-5 py-6 text-xs text-ink-400">Sin etapas definidas todavía.</p>
+        ) : (
+          <div className="divide-y">
+            {phases.map((ph, i) => {
+              const prog = calcPhaseProgress(ph);
+              const tasks = ph.tasks || [];
+              return (
+                <div key={ph.id} className="px-5 py-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                    <span className="font-bold text-sm flex-1 min-w-0 truncate">{ph.name}</span>
+                    <span className="text-[11px] font-black tabular text-emerald-700">{prog}%</span>
+                  </div>
+                  <div className="h-1.5 bg-ink-100 rounded-full overflow-hidden mb-3">
+                    <div className="progress-fill h-full" style={{ width: prog + '%' }} />
+                  </div>
+                  {tasks.length === 0 ? (
+                    <p className="text-[11px] text-ink-400 italic pl-9">Sin actividades.</p>
+                  ) : (
+                    <ul className="space-y-1.5 pl-9">
+                      {tasks.map(tk => {
+                        const tp = taskProgress(tk);
+                        const done = tp === 100;
+                        return (
+                          <li key={tk.id} className="flex items-center gap-2.5 text-sm">
+                            <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${done ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-ink-300'}`}>
+                              {done && <CheckCircle2 className="w-3 h-3" />}
+                            </span>
+                            <span className={`flex-1 min-w-0 truncate ${done ? 'line-through text-ink-400' : 'text-ink-700'}`}>{tk.name}</span>
+                            <div className="w-16 h-1 bg-ink-100 rounded-full overflow-hidden flex-shrink-0">
+                              <div className={`h-full rounded-full ${done ? 'bg-emerald-500' : 'bg-violet-500'}`} style={{ width: tp + '%' }} />
+                            </div>
+                            <span className="text-[10px] font-bold tabular text-ink-400 w-8 text-right">{tp}%</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <ClientTasksSection
+        tasks={clientTasks}
+        busyId={busyId}
+        onDeliver={deliverTask}
+        onDownload={downloadTaskFile}
+      />
 
       <div className="card-light overflow-hidden mb-5" data-fade-card>
         <div className="px-5 py-4 border-b flex items-center justify-between gap-3 flex-wrap bg-gradient-to-r from-emerald-50/40 to-transparent">
@@ -434,6 +524,100 @@ function AdhocUploader({ busy, onCancel, onSubmit }) {
         </button>
       </div>
     </form>
+  );
+}
+
+function ClientTasksSection({ tasks, busyId, onDeliver, onDownload }) {
+  if (!tasks || tasks.length === 0) return null;
+
+  const open = tasks.filter(t => t.status !== 'aprobado');
+  const done = tasks.filter(t => t.status === 'aprobado');
+  const urgent = open.filter(t => t.priority === 'urgente' || (t.due_date && dueRelative(t.due_date)?.overdue));
+
+  return (
+    <div className="card-light overflow-hidden mb-5" data-fade-card>
+      <div className="px-5 py-4 border-b flex items-center justify-between gap-3 flex-wrap bg-gradient-to-r from-violet-50/40 to-transparent">
+        <div>
+          <h2 className="text-xs font-black uppercase tracking-widest text-ink-500 flex items-center gap-2">
+            <ListTodo className="w-3.5 h-3.5" /> Tareas solicitadas por tu equipo
+            {open.length > 0 && (
+              <span className="text-[10px] font-black px-1.5 py-0.5 bg-violet-600 text-white rounded-full">
+                {open.length} abiertas
+              </span>
+            )}
+          </h2>
+          <p className="text-[10px] text-ink-400 mt-0.5">Tu equipo te pide estos materiales para avanzar el proyecto. Sube el archivo desde aquí.</p>
+        </div>
+      </div>
+
+      {urgent.length > 0 && (
+        <div className="px-5 py-3 bg-red-50/70 border-b border-red-200 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+          <p className="text-[11px] text-red-800 font-bold">
+            Tienes {urgent.length} tarea{urgent.length === 1 ? '' : 's'} {urgent.length === 1 ? 'urgente o vencida' : 'urgentes o vencidas'}. Envíalas pronto para no detener tu proyecto.
+          </p>
+        </div>
+      )}
+
+      <ul className="divide-y">
+        {[...open, ...done].map(t => (
+          <ClientTaskRow key={t.id} task={t} busy={busyId === 'ct-' + t.id} onDeliver={onDeliver} onDownload={onDownload} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ClientTaskRow({ task, busy, onDeliver, onDownload }) {
+  const pm = priorityMeta(task.priority);
+  const sm = statusMeta(task.status);
+  const due = dueRelative(task.due_date);
+  const canDeliver = task.status === 'pendiente' || task.status === 'rechazado' || task.status === 'en_progreso';
+  return (
+    <li className="px-5 py-4 hover:bg-ink-50 transition">
+      <div className="flex items-start gap-4 flex-wrap">
+        <div className={`w-10 h-10 rounded-xl ${pm.cls} border flex items-center justify-center flex-shrink-0`}>
+          <ListTodo className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
+            <span className="truncate">{task.title}</span>
+            <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${pm.cls}`}>{pm.label}</span>
+            <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full border ${sm.cls}`}>{sm.label}</span>
+          </div>
+          {task.description && <p className="text-[12px] text-ink-500 mt-1 leading-relaxed">{task.description}</p>}
+          {task.due_date && (
+            <div className={`flex items-center gap-1 mt-1.5 text-[11px] font-bold ${due?.overdue ? 'text-red-600' : due?.soon ? 'text-amber-700' : 'text-ink-500'}`}>
+              {due?.overdue ? <AlertTriangle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+              <span className="font-mono">Entrega: {task.due_date}</span>
+              <span>·</span>
+              <span>{due?.label}</span>
+            </div>
+          )}
+          {task.status === 'rechazado' && task.review_comment && (
+            <div className="mt-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <div className="text-[9px] font-black uppercase tracking-widest text-red-700 mb-0.5">Necesita correcciones</div>
+              <p className="text-[11px] text-red-900 italic leading-snug">&ldquo;{task.review_comment}&rdquo;</p>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+          {task.file_path && (
+            <button onClick={() => onDownload(task)} className="btn-soft text-xs" title="Ver archivo enviado">
+              <Download className="w-3 h-3" /> {task.status === 'rechazado' ? 'Anterior' : 'Ver'}
+            </button>
+          )}
+          {canDeliver && (
+            <label className="btn-emerald cursor-pointer text-xs">
+              <Upload className="w-3.5 h-3.5" />
+              <span>{busy ? 'Subiendo…' : (task.status === 'rechazado' ? 'Re-enviar' : 'Entregar')}</span>
+              <input type="file" className="hidden" disabled={busy}
+                onChange={e => onDeliver({ task, file: e.target.files?.[0] })} />
+            </label>
+          )}
+        </div>
+      </div>
+    </li>
   );
 }
 

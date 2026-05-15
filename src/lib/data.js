@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { logger } from './logger';
 
 export async function fetchProjects() {
   const { data, error } = await supabase
@@ -42,7 +43,8 @@ export async function createProject(payload, opts = {}) {
   const { data, error } = await supabase.from('projects').insert(payload).select().single();
   if (error) throw error;
   const firstPhaseName = opts.firstPhaseName || 'Nueva Fase';
-  const { data: phase } = await supabase.from('phases').insert({ project_id: data.id, name: firstPhaseName, start_week: 1, duration_weeks: 2, position: 0 }).select().single();
+  const { data: phase, error: phaseError } = await supabase.from('phases').insert({ project_id: data.id, name: firstPhaseName, start_week: 1, duration_weeks: 2, position: 0 }).select().single();
+  if (phaseError) logger.error('createProject: phase insert failed', phaseError);
   return { ...data, phases: phase ? [{ ...phase, tasks: [] }] : [], member_ids: [] };
 }
 
@@ -67,8 +69,8 @@ export async function setProjectMember(projectId, profileId, isMember) {
   }
 }
 
-export async function createPhase(projectId, position) {
-  const { data, error } = await supabase.from('phases').insert({ project_id: projectId, name: 'NUEVA FASE', start_week: 1, duration_weeks: 2, position }).select().single();
+export async function createPhase(projectId, position, extra = {}) {
+  const { data, error } = await supabase.from('phases').insert({ project_id: projectId, name: 'NUEVA FASE', start_week: 1, duration_weeks: 2, position, ...extra }).select().single();
   if (error) throw error;
   return { ...data, tasks: [] };
 }
@@ -164,6 +166,24 @@ export async function updateMilestoneTemplate(id, patch) {
 export async function deleteMilestoneTemplate(id) {
   const { error } = await supabase.from('milestone_templates').delete().eq('id', id);
   if (error) throw error;
+}
+
+// =============================================================
+// Mapea un error de Postgres/Supabase a una clave i18n amigable.
+// Devuelve { key, raw }: `key` para mostrar al usuario vía t(), `raw`
+// para loguear. Códigos: 42501/RLS, 23505 unique, 23503 FK,
+// 23514 check, 23502 not-null.
+// =============================================================
+export function friendlyDbError(e) {
+  const msg = (e?.message || '').toLowerCase();
+  const code = e?.code || '';
+  if (code === '42501' || msg.includes('row-level security')) return { key: 'db.error.rls', raw: e?.message };
+  if (code === '23505') return { key: 'db.error.duplicate', raw: e?.message };
+  if (code === '23503') return { key: 'db.error.fk', raw: e?.message };
+  if (code === '23514') return { key: 'db.error.check', raw: e?.message };
+  if (code === '23502') return { key: 'db.error.notNull', raw: e?.message };
+  if (msg.includes('network') || msg.includes('failed to fetch') || msg.includes('fetch')) return { key: 'db.error.network', raw: e?.message };
+  return { key: 'db.error.generic', raw: e?.message };
 }
 
 // RPC: aplica plantilla por categoría al proyecto. Devuelve cantidad creados.

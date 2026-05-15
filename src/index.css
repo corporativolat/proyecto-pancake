@@ -224,8 +224,7 @@
 
   .modal-overlay {
     position: fixed; inset: 0; z-index: 100;
-    background: rgba(9,9,11,0.65);
-    backdrop-filter: blur(12px) saturate(140%);
+    background: rgba(9,9,11,0.74);
     display: flex; align-items: center; justify-content: center;
     padding: 1.5rem;
   }
@@ -481,7 +480,7 @@ body.dark .cursor-glow { background: radial-gradient(circle, rgba(168,85,247,0.1
 /* COMMAND PALETTE */
 .cmdk-overlay {
   position: fixed; inset: 0; z-index: 250;
-  background: rgba(9,9,11,0.50); backdrop-filter: blur(10px);
+  background: rgba(9,9,11,0.62);
   display: flex; align-items: flex-start; justify-content: center;
   padding-top: 12vh;
 }

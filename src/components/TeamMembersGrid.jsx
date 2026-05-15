@@ -26,8 +26,15 @@ export default function TeamMembersGrid() {
 
   const metricsByUser = useMemo(() => {
     const now = Date.now();
+    const byOwner = new Map();
+    for (const p of projects) {
+      if (!p.owner_id) continue;
+      const arr = byOwner.get(p.owner_id);
+      if (arr) arr.push(p);
+      else byOwner.set(p.owner_id, [p]);
+    }
     return profiles.map(u => {
-      const owned = projects.filter(p => p.owner_id === u.id);
+      const owned = byOwner.get(u.id) || [];
       const active = owned.filter(p => !isFinalStatus(p.status));
       const overdue = owned.filter(p => vencimiento(p).kind === 'overdue');
       const stale = active.filter(p => {
@@ -129,7 +136,7 @@ export default function TeamMembersGrid() {
       </div>
 
       {drillUser && (
-        <div className="fixed inset-0 z-40 flex items-end md:items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setDrillId(null)}>
+        <div className="fixed inset-0 z-40 flex items-end md:items-center justify-center bg-black/60" onClick={() => setDrillId(null)}>
           <div onClick={e => e.stopPropagation()} className="bg-white w-full md:max-w-3xl md:rounded-3xl rounded-t-3xl max-h-[80vh] overflow-y-auto scroller p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
@@ -177,7 +184,7 @@ export default function TeamMembersGrid() {
       )}
 
       {reassigning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setReassigning(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setReassigning(null)}>
           <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <h4 className="text-sm font-black text-ink-800">{t('team.reassign.title')}</h4>

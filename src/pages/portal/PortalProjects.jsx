@@ -5,6 +5,7 @@ import gsap from 'gsap';
 import { useAuth } from '../../lib/auth.jsx';
 import { supabase } from '../../lib/supabase';
 import { reduced } from '../../lib/motion';
+import { calcProjectProgress } from '../../lib/utils';
 
 const STATUS_COLOR = {
   'No iniciado':  'bg-ink-100 text-ink-600',
@@ -26,15 +27,22 @@ export default function PortalProjects() {
   useEffect(() => {
     if (!profile?.id) return;
     let cancelled = false;
-    (async () => {
+    const load = async () => {
       const { data } = await supabase
         .from('projects')
-        .select('id, title, status, start_date, projected_end_date, observation, manual_progress')
+        .select('id, title, status, start_date, projected_end_date, observation, manual_progress, phases(tasks(progress, completed))')
         .eq('client_id', profile.id)
         .order('created_at', { ascending: false });
       if (!cancelled) { setItems(data || []); setLoading(false); }
-    })();
-    return () => { cancelled = true; };
+    };
+    load();
+    const ch = supabase
+      .channel(`portal-projects-${profile.id}-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'projects', filter: `client_id=eq.${profile.id}` }, () => { if (!cancelled) load(); })
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'phases' }, () => { if (!cancelled) load(); })
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'tasks' }, () => { if (!cancelled) load(); })
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
   }, [profile?.id]);
 
   const filtered = items.filter(p => {
@@ -97,7 +105,7 @@ export default function PortalProjects() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filtered.map(p => {
-            const prog = p.manual_progress ?? 0;
+            const prog = calcProjectProgress(p);
             return (
               <button key={p.id} onClick={() => navigate(`/portal/projects/${p.id}`)} data-fade-card
                 className="card-light p-5 text-left group hover:-translate-y-1 hover:border-emerald-300 transition">

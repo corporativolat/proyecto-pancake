@@ -3,6 +3,7 @@ import { Activity } from 'lucide-react';
 import { fetchActivity } from '../lib/comments';
 import Avatar from './Avatar.jsx';
 import { useT } from '../lib/i18n.jsx';
+import { logger } from '../lib/logger';
 
 const KIND_LABEL = {
   project_create: 'creó proyecto',
@@ -40,14 +41,16 @@ export default function ActivityFeed({ projectId = null, limit = 30, compact = f
   const [items, setItems] = useState([]);
   const [scope, setScope] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const { t } = useT();
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    setError(null);
     fetchActivity({ projectId, limit })
       .then(rows => { if (alive) setItems(rows || []); })
-      .catch(() => {})
+      .catch(e => { if (alive) { logger.error('ActivityFeed:', e); setError(e.message || String(e)); } })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [projectId, limit]);
@@ -87,7 +90,8 @@ export default function ActivityFeed({ projectId = null, limit = 30, compact = f
       </div>
       <div className="space-y-3">
         {loading && <p className="text-xs text-ink-400 italic">{t('activity.loading')}</p>}
-        {!loading && !filtered.length && <p className="text-xs text-ink-400 italic">{t('activity.empty')}</p>}
+        {!loading && error && <p className="text-xs text-red-600 italic">Error: {error}</p>}
+        {!loading && !error && !filtered.length && <p className="text-xs text-ink-400 italic">{t('activity.empty')}</p>}
         {filtered.map(a => (
           <div key={a.id} className="flex items-start gap-3">
             <Avatar user={a.profile} size={28} />

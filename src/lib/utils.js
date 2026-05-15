@@ -1,14 +1,62 @@
 export const userInitials = (name) => (name || '?').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
+
+// Moneda: locale por código para que Intl formatee con el símbolo correcto.
+export const CURRENCY_LOCALE = { COP: 'es-CO', USD: 'en-US', BRL: 'pt-BR' };
+export const fmtMoney = (n, cur = 'COP') => {
+  if (!Number.isFinite(n)) return '—';
+  return new Intl.NumberFormat(CURRENCY_LOCALE[cur] || 'es-CO',
+    { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(n);
+};
+
 export const avatarClass = (n) => {
   const v = parseInt(n) || 1;
   const safe = ((v - 1) % 12 + 12) % 12 + 1;
   return `av-${safe}`;
 };
 
+// Progreso de una tarea: usa `progress` (0-100) si existe; si no, deriva de `completed`.
+export const taskProgress = (t) =>
+  Number.isFinite(t?.progress) ? t.progress : (t?.completed ? 100 : 0);
+
 export const calcPhaseProgress = (phase) => {
   if (!phase?.tasks?.length) return 0;
-  return Math.round((phase.tasks.filter(t => t.completed).length / phase.tasks.length) * 100);
+  return Math.round(phase.tasks.reduce((a, t) => a + taskProgress(t), 0) / phase.tasks.length);
 };
+
+// ---- Plazo del proyecto en la grilla del Gantt (8 semanas / 56 días) --------
+// Día 0 = start_date. El último día permitido es projected_end_date.
+// Devuelve el índice (0-based) del último día utilizable, tope 55.
+// Sin start_date o sin projected_end_date => 55 (sin restricción).
+export function projectMaxDayIndex(project) {
+  if (!project?.start_date || !project?.projected_end_date) return 55;
+  const s = new Date(project.start_date + 'T00:00:00');
+  const e = new Date(project.projected_end_date + 'T00:00:00');
+  const days = Math.round((e - s) / 86400000);
+  if (!Number.isFinite(days) || days < 0) return 55;
+  return Math.min(55, days);
+}
+
+export const dayIndexOf = (week, day) => (week - 1) * 7 + (day - 1);
+export const weekDayFromIndex = (idx) => ({
+  week: Math.min(8, Math.floor(idx / 7) + 1),
+  day: (idx % 7) + 1,
+});
+
+// Ajusta una fase/tarea ({start_week, start_day, duration}) para que no exceda
+// el plazo del proyecto. `duration` está en días.
+export function clampSpanToProject({ start_week, start_day, duration }, maxDayIndex) {
+  let sw = Math.max(1, Math.min(8, parseInt(start_week) || 1));
+  let sd = Math.max(1, Math.min(7, parseInt(start_day) || 1));
+  let dur = Math.max(1, Math.min(56, parseInt(duration) || 1));
+  let idx = dayIndexOf(sw, sd);
+  if (idx > maxDayIndex) {
+    idx = maxDayIndex;
+    const wd = weekDayFromIndex(idx);
+    sw = wd.week; sd = wd.day;
+  }
+  if (idx + dur - 1 > maxDayIndex) dur = Math.max(1, maxDayIndex - idx + 1);
+  return { start_week: sw, start_day: sd, duration: dur };
+}
 export const calcProjectProgress = (project) => {
   const totalTasks = (project?.phases || []).reduce((a, ph) => a + (ph.tasks?.length || 0), 0);
   if (totalTasks === 0) {

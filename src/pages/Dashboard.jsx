@@ -6,7 +6,7 @@ import { FolderKanban, Zap, CheckCircle2, TrendingUp, Search, AlertTriangle, Che
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcProjectProgress, healthSignal, STATUSES, vencimiento } from '../lib/utils';
+import { calcProjectProgress, effectiveHealth, STATUSES, vencimiento } from '../lib/utils';
 import { countUp, animateBars, staggerIn, reduced } from '../lib/motion';
 import Avatar from '../components/Avatar.jsx';
 import ActivityFeed from '../components/ActivityFeed.jsx';
@@ -33,10 +33,16 @@ export default function Dashboard() {
     return projects.filter(p => p.owner_id === profile?.id || (p.member_ids || []).includes(profile?.id));
   }, [projects, profile, can]);
 
-  const total = visible.length;
-  const finished = visible.filter(p => p.status === 'Finalizado').length;
-  const active = visible.filter(p => ['En Desarrollo', 'Planeación'].includes(p.status)).length;
-  const avg = total ? Math.round(visible.reduce((a, p) => a + calcProjectProgress(p), 0) / total) : 0;
+  const profileMap = useMemo(() => new Map(profiles.map(u => [u.id, u])), [profiles]);
+  const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
+
+  const { total, finished, active, avg } = useMemo(() => {
+    const total = visible.length;
+    const finished = visible.filter(p => p.status === 'Finalizado').length;
+    const active = visible.filter(p => ['En Desarrollo', 'Planeación'].includes(p.status)).length;
+    const avg = total ? Math.round(visible.reduce((a, p) => a + calcProjectProgress(p), 0) / total) : 0;
+    return { total, finished, active, avg };
+  }, [visible]);
   const overdueList = useMemo(
     () => visible
       .map(p => ({ p, v: vencimiento(p) }))
@@ -74,7 +80,11 @@ export default function Dashboard() {
     staggerIn(ref.current);
   }, [total, active, finished, avg, filter]);
 
-  const filtered = visible.filter(p => !filter || p.title.toLowerCase().includes(filter.toLowerCase()) || (p.company || '').toLowerCase().includes(filter.toLowerCase()));
+  const filtered = useMemo(() => {
+    if (!filter) return visible;
+    const q = filter.toLowerCase();
+    return visible.filter(p => p.title.toLowerCase().includes(q) || (p.company || '').toLowerCase().includes(q));
+  }, [visible, filter]);
 
   const donutData = useMemo(() => {
     const counts = STATUSES.map(s => visible.filter(p => p.status === s.name).length);
@@ -92,9 +102,9 @@ export default function Dashboard() {
       map[p.owner_id].count++;
       map[p.owner_id].prog += calcProjectProgress(p);
     });
-    return Object.entries(map).map(([id, v]) => ({ user: profiles.find(u => u.id === id), count: v.count, avgProg: Math.round(v.prog / v.count) }))
+    return Object.entries(map).map(([id, v]) => ({ user: profileMap.get(id), count: v.count, avgProg: Math.round(v.prog / v.count) }))
       .sort((a, b) => b.count - a.count).slice(0, 5);
-  }, [visible, profiles]);
+  }, [visible, profileMap]);
 
   if (loading && !projects.length) {
     return (
@@ -182,7 +192,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody className="divide-y divide-ink-100">
                   {overdueList.map(({ p, v }) => {
-                    const owner = profiles.find(u => u.id === p.owner_id);
+                    const owner = profileMap.get(p.owner_id);
                     return (
                       <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)} className="hover:bg-red-50/40 transition cursor-pointer">
                         <td className="px-6 py-3">
@@ -283,10 +293,10 @@ export default function Dashboard() {
                 </thead>
                 <tbody className="divide-y divide-ink-100">
                   {filtered.map(pj => {
-                    const owner = profiles.find(u => u.id === pj.owner_id);
-                    const cat = categories.find(c => c.id === pj.category_id);
+                    const owner = profileMap.get(pj.owner_id);
+                    const cat = categoryMap.get(pj.category_id);
                     const prog = calcProjectProgress(pj);
-                    const h = healthSignal(pj, prog);
+                    const h = effectiveHealth(pj, prog);
                     return (
                       <tr key={pj.id} onClick={() => navigate(`/projects/${pj.id}`)} className="hover:bg-violet-50/40 transition cursor-pointer group">
                         <td className="px-6 py-4">

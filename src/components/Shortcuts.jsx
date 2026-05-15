@@ -7,6 +7,7 @@ import { useT } from '../lib/i18n.jsx';
 export default function Shortcuts({ open, onClose }) {
   const overlayRef = useRef(null);
   const cardRef = useRef(null);
+  const downOnOverlayRef = useRef(false);
   const { t } = useT();
 
   const items = [
@@ -32,9 +33,15 @@ export default function Shortcuts({ open, onClose }) {
     gsap.to(overlayRef.current, { opacity: 0, duration: 0.2, onComplete: onClose });
   };
 
+  const onOverlayDown = (e) => { downOnOverlayRef.current = (e.target === overlayRef.current); };
+  const onOverlayUp = (e) => {
+    if (downOnOverlayRef.current && e.target === overlayRef.current) close();
+    downOnOverlayRef.current = false;
+  };
+
   if (!open) return null;
   return (
-    <div ref={overlayRef} className="modal-overlay" onClick={(e) => { if (e.target === overlayRef.current) close(); }}>
+    <div ref={overlayRef} className="modal-overlay" onMouseDown={onOverlayDown} onMouseUp={onOverlayUp}>
       <div ref={cardRef} className="modal-card max-w-md">
         <div className="modal-header">
           <h3 className="text-lg font-black tracking-tight flex items-center gap-2"><Keyboard className="w-5 h-5" /> {t('shortcuts.title')}</h3>
