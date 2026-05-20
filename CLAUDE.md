@@ -69,6 +69,28 @@ Postgres vive en Supabase y todo el schema custom es `pro_gestion` (no `public`)
 
 9. `supabase-migration-13.sql` — granularidad de día en fases. Añade `phases.start_day` (smallint 1-7, default 1) y `phases.duration_days` (smallint 1-56, nullable). El cliente posiciona el rectángulo de fase en el Gantt como `((start_week-1)*7 + (start_day-1)) * 28` px y lo dimensiona como `(duration_days ?? duration_weeks*7) * 28` px. Si `duration_days` está NULL se mantiene compat con `duration_weeks`. Drag/resize del rect snappean a día (28px) en lugar de semana.
 
+20. `supabase-migration-25.sql` — **datos obligatorios del cliente al primer login**. Añade a `profiles`: `whatsapp` (text), `country` (text), `id_type` (text, CHECK `null|NIT|CC|CE|PP|OTRO`), `id_number` (text), `contact_email` (text), `client_data_completed` (boolean default false). Motivo: el staff le crea la cuenta al cliente con un correo y password, así que no conocemos su WhatsApp, país, NIT/CC ni su correo personal. `src/components/ClientDataGate.jsx` se monta en `PortalLayout.jsx` y renderiza un modal fullscreen no descartable (z-200) cuando `profile.role === 'cliente' && !profile.client_data_completed`. Bloquea todo el portal hasta que el cliente complete los 4 campos. Al guardar, también copia `whatsapp` → `phone` por compat con el resto del portal. El tour visual (`OnboardingTour`) no arranca hasta que el gate cierre. Los mismos campos quedan editables luego en `PortalProfile.jsx`. Idempotente.
+
+21. `supabase-migration-26.sql` — **cuestionario obligatorio de intake por proyecto** (uno por tipo de negocio del cliente). Pancake construye bots para 3 verticales (infoproductor / e-commerce / servicios) y necesita capturar info estructurada antes de arrancar. Añade:
+    - `projects.business_type` (text nullable, CHECK `null|infoproductor|ecommerce|servicios`). Es **ortogonal** a `category_id` (la taxonomía de qué hace Pancake): aquí se define qué tipo de negocio tiene el cliente final, lo que determina qué cuestionario base verá en el portal.
+    - Tabla `pro_gestion.intake_forms` (1 fila por proyecto, UNIQUE(project_id)): `business_type`, `answers jsonb`, `status` (`borrador|enviado|aprobado|rechazado`), `submitted_at`, `reviewed_by`, `reviewed_at`, `review_comment`.
+    - RLS: staff lee/escribe siempre. Cliente del proyecto lee siempre; escribe sólo si `status in ('borrador','rechazado')` (vía helper `is_project_client()`). Owner/created_by también escriben siempre.
+    - Trigger `ensure_intake_form` (AFTER INSERT/UPDATE en `projects`): crea fila vacía en `intake_forms` cuando `business_type` pasa a no-null y no existe. Si cambia mientras está en borrador, sincroniza el `business_type` de la fila.
+    - Trigger `notify_intake_event` (AFTER UPDATE en `intake_forms`): notifica al owner cuando cliente envía (`enviado` → kind `intake_submitted`); notifica al cliente cuando staff revisa (`aprobado`/`rechazado` → kind `intake_reviewed`).
+    - Realtime publication: `intake_forms`.
+
+    **Cliente (frontend):**
+    - `src/lib/intakeSchemas.js` — 3 schemas declarativos (INFOPRODUCTOR, ECOMMERCE, SERVICIOS) con todas las preguntas del PDF base. Export `BUSINESS_TYPES`, `BUSINESS_TYPE_LABEL`, `getIntakeSchema(bt)`, `intakeProgress(schema, answers)` que cuenta respondidas/total y `requiredMissing`. Tipos de input soportados: `text|textarea|select|multiselect|yesno`.
+    - `src/components/IntakeForm.jsx` — render genérico read/write con barra de progreso, secciones colapsadas, validación visual de `required`.
+    - `src/components/IntakePanel.jsx` — vista staff. Modal montado desde `ProjectDetail.jsx` con badge ámbar en header (cuenta intakes en `enviado`). Permite aprobar o devolver con comentario. Si `status='aprobado'`, ofrece "reabrir con observaciones".
+    - `src/components/PortalIntakeSection.jsx` — sección editable en `PortalProjectDetail.jsx`. Auto-guarda cada 1.2s en `borrador`/`rechazado`. Botón "Enviar para revisión" se habilita cuando no faltan `required`. En `enviado`/`aprobado` queda solo lectura.
+    - `src/components/IntakePendingBanner.jsx` — banner violeta en `PortalDashboard.jsx` (paralelo a `PendingDocsBanner`) que avisa de cuestionarios en `borrador`/`rechazado`. Dismiss en sessionStorage (`pending-intake-dismissed`).
+    - `src/lib/data.js` — `fetchIntakeForm`, `ensureIntakeForm`, `saveIntakeAnswers`, `submitIntakeForm`, `approveIntakeForm`, `rejectIntakeForm`.
+    - `Projects.jsx::NewProjectForm` — selector de tipo de negocio (3 chips) en la creación.
+    - `ProjectDetail.jsx` — selector en el header (debajo de Contrato) para asignar/cambiar después, y botón **Intake** con badge para abrir el modal de revisión.
+
+    Idempotente.
+
 El cliente apunta al schema custom mediante `db: { schema: 'pro_gestion' }` en `createClient`. Cualquier tabla nueva debe crearse dentro de `pro_gestion` y exponerse en `pgrst.db_schemas`.
 
 **Nota sobre attachments**: tras `migration-7`, los archivos antiguos cuya ruta no empieza con `<uid>/` no podrán modificarse/borrarse por sus dueños (solo admin podrá borrarlos). El cliente ahora usa `<uid>/<task_id>/<timestamp>-<safeName>` (ver `src/lib/storage.js::uploadAttachment`). Si tienes uploads heredados, migra los paths o ignóralos.

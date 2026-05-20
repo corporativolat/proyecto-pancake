@@ -227,3 +227,78 @@ export async function applyDocumentTemplate(projectId, triggerStatus = null) {
   if (error) throw error;
   return data ?? 0;
 }
+
+// =============================================================
+// Intake forms (mig-26)
+// Cuestionario obligatorio que el cliente debe completar antes de
+// arrancar la construcción del bot. Una fila por proyecto.
+// =============================================================
+export async function fetchIntakeForm(projectId) {
+  const { data, error } = await supabase
+    .from('intake_forms')
+    .select('*')
+    .eq('project_id', projectId)
+    .maybeSingle();
+  if (error) throw error;
+  return data; // puede ser null si aún no hay fila
+}
+
+// Crea la fila si no existe (red de seguridad — normalmente la crea el
+// trigger ensure_intake_form al setearse projects.business_type).
+export async function ensureIntakeForm(projectId, businessType) {
+  const existing = await fetchIntakeForm(projectId);
+  if (existing) return existing;
+  const { data, error } = await supabase
+    .from('intake_forms')
+    .insert({ project_id: projectId, business_type: businessType, answers: {}, status: 'borrador' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Guarda parcialmente las respuestas del cliente. No cambia status.
+export async function saveIntakeAnswers(intakeId, answers) {
+  const { error } = await supabase
+    .from('intake_forms')
+    .update({ answers })
+    .eq('id', intakeId);
+  if (error) throw error;
+}
+
+// Cliente envía el cuestionario para revisión del staff.
+export async function submitIntakeForm(intakeId, answers) {
+  const { error } = await supabase
+    .from('intake_forms')
+    .update({ answers, status: 'enviado', submitted_at: new Date().toISOString() })
+    .eq('id', intakeId);
+  if (error) throw error;
+}
+
+// Staff aprueba el cuestionario.
+export async function approveIntakeForm(intakeId, reviewerId, comment = '') {
+  const { error } = await supabase
+    .from('intake_forms')
+    .update({
+      status: 'aprobado',
+      reviewed_by: reviewerId,
+      reviewed_at: new Date().toISOString(),
+      review_comment: comment || ''
+    })
+    .eq('id', intakeId);
+  if (error) throw error;
+}
+
+// Staff rechaza (devuelve al cliente para correcciones).
+export async function rejectIntakeForm(intakeId, reviewerId, comment) {
+  const { error } = await supabase
+    .from('intake_forms')
+    .update({
+      status: 'rechazado',
+      reviewed_by: reviewerId,
+      reviewed_at: new Date().toISOString(),
+      review_comment: comment || ''
+    })
+    .eq('id', intakeId);
+  if (error) throw error;
+}

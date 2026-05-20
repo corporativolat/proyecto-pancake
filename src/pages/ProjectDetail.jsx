@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Calendar, Maximize2, Minimize2, FileText, Trash2, X, Plus, Map as MapIcon, ChevronLeft, ChevronRight, User, Download, ChevronUp, ChevronDown, Flag, ListChecks } from 'lucide-react';
+import { Calendar, Maximize2, Minimize2, FileText, Trash2, X, Plus, Map as MapIcon, ChevronLeft, ChevronRight, User, Download, ChevronUp, ChevronDown, Flag, ListChecks, ClipboardList } from 'lucide-react';
 import gsap from 'gsap';
 import { Draggable } from 'gsap/Draggable';
 import { useStore } from '../lib/store';
@@ -12,6 +12,9 @@ import Comments from '../components/Comments.jsx';
 import ActivityFeed from '../components/ActivityFeed.jsx';
 import ClientDocsPanel from '../components/ClientDocsPanel.jsx';
 import ClientTasksPanel from '../components/ClientTasksPanel.jsx';
+import IntakePanel from '../components/IntakePanel.jsx';
+import IntakePreviewModal from '../components/IntakePreviewModal.jsx';
+import { BUSINESS_TYPE_LABEL, INTAKE_SCHEMAS } from '../lib/intakeSchemas.js';
 import { animateBars, confetti, reduced } from '../lib/motion';
 import { updateProject, deleteProjectById, setProjectMember, createPhase, updatePhase, deletePhase, createTask, updateTask, deleteTask, reorderPhases, createMilestone, updateMilestone, deleteMilestone, fetchMilestoneTemplates, applyMilestoneTemplate } from '../lib/data';
 import { supabase } from '../lib/supabase';
@@ -40,6 +43,7 @@ export default function ProjectDetail() {
   const [clientDocsBadge, setClientDocsBadge] = useState(0);
   const [showClientTasks, setShowClientTasks] = useState(false);
   const [clientTasksBadge, setClientTasksBadge] = useState(0);
+  const [intakePreviewMode, setIntakePreviewMode] = useState(null); // null | 'select' | 'view'
   const [showTeamEditor, setShowTeamEditor] = useState(false);
   const [showExec, setShowExec] = useState(false);
   const [mobileTab, setMobileTab] = useState('roadmap'); // 'roadmap' | 'gantt'
@@ -178,33 +182,29 @@ export default function ProjectDetail() {
               className="pj-title text-2xl md:text-3xl font-black border-none focus:ring-0 w-full bg-transparent p-0 text-ink-900 tracking-tight outline-none"
               placeholder={t('pj.titlePlaceholder')}
             />
-            <div className="flex items-center gap-4 mt-2 flex-wrap">
+            <div className="flex items-center gap-x-2 gap-y-1.5 mt-2 flex-wrap">
               <input
                 type="text" value={project.company || ''} disabled={!editable}
                 onChange={e => debouncedUpdate('company', e.target.value)}
                 title={PROJECT_FIELD_HELP.company}
-                className="text-sm font-bold border-none focus:ring-0 text-ink-400 bg-transparent w-auto outline-none"
+                className="text-sm font-bold border-none focus:ring-0 text-ink-400 bg-transparent w-auto outline-none min-w-0 max-w-[12rem] mr-1"
                 placeholder={t('pj.companyPlaceholder')}
               />
-              <span className="text-ink-200">·</span>
               <select value={project.category_id || ''} disabled={!editable}
                 onChange={e => debouncedUpdate('category_id', e.target.value)}
                 title={(() => {
                   const c = categories.find(x => x.id === project.category_id);
                   return c ? `Tipo: ${c.name} — ${PROJECT_CATEGORY_HELP[c.name] || PROJECT_FIELD_HELP.category_id}` : PROJECT_FIELD_HELP.category_id;
                 })()}
-                className="text-[10px] font-bold uppercase tracking-widest bg-violet-50 text-violet-700 px-3 py-1 rounded-full border-none focus:ring-2 focus:ring-violet-500 outline-none">
+                className="text-[10px] font-bold uppercase tracking-widest bg-violet-50 text-violet-700 px-3 py-1 rounded-full border-none focus:ring-2 focus:ring-violet-500 outline-none max-w-full">
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <span className="text-ink-200">·</span>
-              <div className="flex items-center gap-2" title={PROJECT_FIELD_HELP.start_date}>
+              <div className="inline-flex items-center gap-1.5 bg-ink-100 rounded-full pl-2 pr-1 py-0.5" title={PROJECT_FIELD_HELP.start_date}>
                 <Calendar className="w-3 h-3 text-ink-400" />
                 <input type="date" value={project.start_date || ''} disabled={!editable}
                   onChange={e => debouncedUpdate('start_date', e.target.value)}
-                  className="text-[10px] font-bold border-none bg-ink-100 rounded px-2 py-1 text-ink-600 focus:ring-2 focus:ring-violet-500 outline-none" />
+                  className="text-[10px] font-bold border-none bg-transparent rounded px-1 py-0.5 text-ink-600 focus:ring-2 focus:ring-violet-500 outline-none" />
               </div>
-            </div>
-            <div className="mt-2 flex items-center gap-2 flex-wrap">
               {(() => {
                 const val = Number(project.project_value);
                 const hrs = Number(project.project_hours);
@@ -213,12 +213,12 @@ export default function ProjectDetail() {
                 const cur = project.currency || 'COP';
                 const fmt = (n) => fmtMoney(n, cur);
                 return (
-                  <div className="inline-flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full px-3 py-1">
-                    <span title={t('projects.field.value')}>{fmt(val)} {cur}</span>
-                    <span className="opacity-50">·</span>
+                  <div className="inline-flex flex-nowrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full px-3 py-1 whitespace-nowrap">
+                    <span title={`${t('projects.field.value')} (${cur})`}>{fmt(val)}</span>
+                    <span className="opacity-40">·</span>
                     <span title={t('projects.field.hours')} className="tabular">{hrs}h</span>
-                    <span className="opacity-50">·</span>
-                    <span title={t('projects.field.perHour')} className="tabular">{fmt(rate)}{t('projects.field.perHour')}</span>
+                    <span className="opacity-40">·</span>
+                    <span title={t('projects.field.perHour')} className="tabular">{fmt(rate)}/h</span>
                   </div>
                 );
               })()}
@@ -229,7 +229,7 @@ export default function ProjectDetail() {
                   ? 'bg-amber-50 text-amber-700 border-amber-200'
                   : 'bg-red-50 text-red-700 border-red-200';
                 return (
-                  <div className={`inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest border rounded-full px-3 py-1 ${cls}`} title={t('pj.completenessHelp')}>
+                  <div className={`inline-flex flex-nowrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest border rounded-full px-3 py-1 whitespace-nowrap ${cls}`} title={t('pj.completenessHelp')}>
                     <span>{t('pj.completeness')}</span>
                     <span className="tabular">{score}%</span>
                   </div>
@@ -384,6 +384,14 @@ export default function ProjectDetail() {
           </div>
         </div>
 
+        {/* Fila 4: Cuestionario inicial (compacta — modal con preview) */}
+        <BusinessTypeRow
+          project={project}
+          editable={editable}
+          onOpenSelect={() => setIntakePreviewMode('select')}
+          onOpenView={() => setIntakePreviewMode('view')}
+        />
+
         {(() => {
           const memberIds = new Set(project.member_ids || []);
           const ownerId = project.owner_id;
@@ -483,6 +491,11 @@ export default function ProjectDetail() {
             ))}
             <MilestonesEmptyBanner project={project} categories={categories} editable={editable} onApplied={refreshProjects} />
             <MilestonesPanel project={project} editable={editable} onChange={refreshProjects} />
+            {project.business_type && (
+              <div className="bg-white rounded-3xl shadow-sm border border-ink-100 p-5 md:p-6 mt-4">
+                <IntakePanel project={project} />
+              </div>
+            )}
             <Comments projectId={project.id} />
             <ActivityFeed projectId={project.id} compact />
           </>
@@ -600,6 +613,21 @@ export default function ProjectDetail() {
           <ClientTasksPanel project={project} />
         </Modal>
       )}
+      <IntakePreviewModal
+        open={intakePreviewMode !== null}
+        mode={intakePreviewMode || 'select'}
+        businessType={project.business_type}
+        onClose={() => setIntakePreviewMode(null)}
+        onSelect={async (bt) => {
+          try {
+            await updateProject(project.id, { business_type: bt });
+            await refreshProjects();
+            showToast(`Cuestionario "${BUSINESS_TYPE_LABEL[bt]}" asignado`, 'success');
+          } catch (e) {
+            showToast('Error: ' + (e?.message || ''), 'error');
+          }
+        }}
+      />
       {showExec && <ExecModal project={project} profiles={profiles} onClose={() => setShowExec(false)} />}
     </section>
   );
@@ -745,6 +773,56 @@ function DetailLabel({ label, help }) {
       <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-1 block">{label}</label>
       {help && <p className="text-[10px] text-ink-400 italic mb-1.5 leading-snug">{help}</p>}
     </>
+  );
+}
+
+// Fila compacta de "Cuestionario inicial":
+//   - sin asignar: botón "Asignar cuestionario" que abre el modal de selección.
+//   - asignado: pill read-only con tipo, # de preguntas y enlace "Ver detalle".
+// Una vez asignado NO se permite cambiarlo (el cliente puede haber empezado
+// a responder). Para cambiarlo habría que limpiar el intake_form manualmente
+// desde la BD.
+function BusinessTypeRow({ project, editable, onOpenSelect, onOpenView }) {
+  const bt = project.business_type;
+  const schema = bt ? INTAKE_SCHEMAS[bt] : null;
+  const totalQs = schema?.sections.reduce((acc, s) => acc + s.questions.length, 0) || 0;
+
+  if (!bt) {
+    return (
+      <div className="mt-2 pj-extra">
+        <DetailLabel
+          label="Cuestionario inicial"
+          help="Define qué cuestionario base llenará el cliente en su portal. Una vez asignado no se podrá cambiar."
+        />
+        <button
+          type="button"
+          onClick={onOpenSelect}
+          disabled={!editable}
+          className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          <ClipboardList className="w-3.5 h-3.5" /> Asignar cuestionario
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 pj-extra">
+      <DetailLabel label="Cuestionario inicial" />
+      <div className="inline-flex items-center gap-2 flex-wrap bg-violet-50 border border-violet-200 rounded-full pl-3 pr-1.5 py-1">
+        <ClipboardList className="w-3.5 h-3.5 text-violet-700" />
+        <span className="text-[11px] font-black tracking-tight text-violet-800">{BUSINESS_TYPE_LABEL[bt]}</span>
+        <span className="text-[10px] font-mono text-violet-600 bg-white/70 px-1.5 py-0.5 rounded-full">{totalQs} preg.</span>
+        <button
+          type="button"
+          onClick={onOpenView}
+          className="text-[10px] font-bold text-violet-700 hover:text-violet-900 bg-white border border-violet-200 hover:border-violet-400 rounded-full px-2 py-0.5 transition"
+        >
+          Ver detalle
+        </button>
+        <span className="text-[9px] font-bold text-violet-600/70 italic px-1.5">🔒 No editable</span>
+      </div>
+    </div>
   );
 }
 

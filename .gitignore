@@ -11,3 +11,6 @@ legacy/
 # Backups locales
 *.tar.gz
 *.original.md
+
+# Claude Code memoria local (no commitear)
+memory/

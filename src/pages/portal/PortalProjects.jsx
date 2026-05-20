@@ -103,18 +103,18 @@ export default function PortalProjects() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 auto-rows-fr">
           {filtered.map(p => {
             const prog = calcProjectProgress(p);
             return (
               <button key={p.id} onClick={() => navigate(`/portal/projects/${p.id}`)} data-fade-card
-                className="card-light p-5 text-left group hover:-translate-y-1 hover:border-emerald-300 transition">
+                className="card-light p-5 text-left group hover:-translate-y-1 hover:border-emerald-300 transition flex flex-col h-full">
                 <div className="flex items-start justify-between gap-3 mb-3">
-                  <h3 className="font-black text-base leading-tight flex-1">{p.title}</h3>
+                  <h3 className="font-black text-base leading-tight flex-1 line-clamp-2">{p.title}</h3>
                   <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full flex-shrink-0 ${STATUS_COLOR[p.status] || 'bg-ink-100 text-ink-600'}`}>{p.status}</span>
                 </div>
                 <div className="text-[11px] text-ink-500 mb-3 font-mono">{p.start_date || 'Sin inicio'} → {p.projected_end_date || 'Sin fin proyectado'}</div>
-                <div className="flex items-center gap-3">
+                <div className="mt-auto flex items-center gap-3">
                   <div className="flex-1 bg-ink-100 h-2 rounded-full overflow-hidden">
                     <div data-fade-bar data-target={prog} className="progress-fill h-full" style={{ width: prog + '%' }} />
                   </div>
@@ -132,7 +132,7 @@ export default function PortalProjects() {
 
 function ProjectsSkeleton() {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {[1, 2, 3, 4].map(i => (
         <div key={i} className="card-light p-5">
           <div className="flex items-start justify-between gap-3 mb-3">

@@ -4,7 +4,7 @@ import { supabase } from './supabase';
 export async function fetchClients() {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, name, email, phone, company, suspended, avatar, created_at')
+    .select('id, name, email, phone, company, suspended, avatar, created_at, whatsapp, country, id_type, id_number, contact_email, client_data_completed')
     .eq('role', 'cliente')
     .order('created_at', { ascending: false });
   if (error) throw error;

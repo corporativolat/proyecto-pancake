@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/auth.jsx';
 import { useTheme } from '../../lib/theme.jsx';
 import OnboardingTour from '../../components/OnboardingTour.jsx';
 import NotifBell from '../../components/NotifBell.jsx';
+import ClientDataGate from '../../components/ClientDataGate.jsx';
 
 const TOUR_STEPS = [
   { selector: '[data-tour="dashboard"]',  title: 'Inicio',       body: 'Aquí verás un resumen de tus proyectos, documentos pendientes y próximas fechas.' },
@@ -31,10 +32,13 @@ export default function PortalLayout({ children }) {
 
   useEffect(() => { setMobileOpen(false); }, [loc.pathname]);
 
-  // Auto-lanzar tour la primera vez (cliente sin onboarding completado)
+  // Auto-lanzar tour la primera vez (cliente sin onboarding completado).
+  // No arrancar hasta que el cliente haya completado el formulario de datos
+  // obligatorios — si no, el spotlight queda detrás del gate.
   useEffect(() => {
     if (!profile) return;
     if (profile.onboarding_completed) return;
+    if (profile.role === 'cliente' && !profile.client_data_completed) return;
     let skipped = false;
     try { skipped = localStorage.getItem('portal-tour-skipped') === '1'; } catch { /* noop */ }
     if (skipped) return;
@@ -121,6 +125,7 @@ export default function PortalLayout({ children }) {
       </main>
 
       {tourOpen && <OnboardingTour steps={TOUR_STEPS} onClose={() => setTourOpen(false)} />}
+      <ClientDataGate />
     </div>
   );
 }

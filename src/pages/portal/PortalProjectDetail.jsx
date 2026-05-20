@@ -8,6 +8,7 @@ import { useToast } from '../../lib/toast';
 import { reduced } from '../../lib/motion';
 import { calcPhaseProgress, calcProjectProgress, taskProgress } from '../../lib/utils';
 import { listClientTasks, deliverClientTask, signedUrlForTaskFile, priorityMeta, statusMeta, dueRelative } from '../../lib/clientTasks';
+import PortalIntakeSection from '../../components/PortalIntakeSection.jsx';
 
 const STATUS_COLOR = {
   'No iniciado':  'bg-ink-100 text-ink-600',
@@ -199,6 +200,8 @@ export default function PortalProjectDetail() {
       </header>
 
       <TimelineSection project={project} milestones={milestones} />
+
+      <PortalIntakeSection project={project} />
 
       <div className="card-light p-5 mb-5" data-fade-card>
         <h2 className="text-xs font-black uppercase tracking-widest text-ink-500 mb-3 flex items-center gap-2"><Flag className="w-3.5 h-3.5" /> Hitos</h2>

@@ -8,9 +8,14 @@ import { useToast } from '../../lib/toast';
 export default function PortalProfile() {
   const { profile, refresh } = useAuth();
   const showToast = useToast(s => s.show);
-  const [name, setName]       = useState(profile?.name || '');
-  const [phone, setPhone]     = useState(profile?.phone || '');
-  const [company, setCompany] = useState(profile?.company || '');
+  const [name, setName]                 = useState(profile?.name || '');
+  const [phone, setPhone]               = useState(profile?.phone || '');
+  const [company, setCompany]           = useState(profile?.company || '');
+  const [whatsapp, setWhatsapp]         = useState(profile?.whatsapp || '');
+  const [country, setCountry]           = useState(profile?.country || '');
+  const [idType, setIdType]             = useState(profile?.id_type || 'CC');
+  const [idNumber, setIdNumber]         = useState(profile?.id_number || '');
+  const [contactEmail, setContactEmail] = useState(profile?.contact_email || '');
   const [pwd, setPwd]         = useState('');
   const [pwd2, setPwd2]       = useState('');
   const [busy, setBusy]       = useState(false);
@@ -19,7 +24,10 @@ export default function PortalProfile() {
     e.preventDefault();
     setBusy(true);
     try {
-      const { error } = await supabase.from('profiles').update({ name, phone, company }).eq('id', profile.id);
+      const { error } = await supabase.from('profiles').update({
+        name, phone, company,
+        whatsapp, country, id_type: idType, id_number: idNumber, contact_email: contactEmail
+      }).eq('id', profile.id);
       if (error) throw error;
       await refresh();
       showToast('Perfil actualizado', 'success');
@@ -67,8 +75,27 @@ export default function PortalProfile() {
       <form onSubmit={saveProfile} className="bg-white border rounded-2xl p-6 space-y-4 mb-6">
         <h2 className="text-xs font-black uppercase tracking-widest text-ink-500 mb-2">Datos</h2>
         <Field label="Nombre"><input value={name} onChange={e => setName(e.target.value)} className="input-light" required /></Field>
-        <Field label="Email"><input value={profile?.email || ''} disabled className="input-light bg-ink-50 cursor-not-allowed" /></Field>
+        <Field label="Email de login"><input value={profile?.email || ''} disabled className="input-light bg-ink-50 cursor-not-allowed" /></Field>
+        <Field label="Email de contacto"><input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} className="input-light" /></Field>
+        <Field label="WhatsApp"><input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} className="input-light" inputMode="tel" placeholder="+57 300 123 4567" /></Field>
         <Field label="Teléfono"><input value={phone} onChange={e => setPhone(e.target.value)} className="input-light" /></Field>
+        <Field label="País"><input value={country} onChange={e => setCountry(e.target.value)} className="input-light" /></Field>
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Tipo ID">
+            <select value={idType} onChange={e => setIdType(e.target.value)} className="input-light">
+              <option value="CC">CC</option>
+              <option value="NIT">NIT</option>
+              <option value="CE">CE</option>
+              <option value="PP">PP</option>
+              <option value="OTRO">OTRO</option>
+            </select>
+          </Field>
+          <div className="col-span-2">
+            <Field label="Número de identificación">
+              <input value={idNumber} onChange={e => setIdNumber(e.target.value)} className="input-light" />
+            </Field>
+          </div>
+        </div>
         <Field label="Empresa"><input value={company} onChange={e => setCompany(e.target.value)} className="input-light" /></Field>
         <button type="submit" disabled={busy} className="btn-emerald">Guardar cambios</button>
       </form>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Maximize2, Minimize2, X, Trash2, Search, ArrowRight } from 'lucide-react';
+import { Plus, Maximize2, Minimize2, X, Trash2, Search, ArrowRight, ClipboardList } from 'lucide-react';
 import gsap from 'gsap';
 import { Draggable } from 'gsap/Draggable';
 import { useStore } from '../lib/store';
@@ -14,6 +14,8 @@ import { uploadContract } from '../lib/storage';
 import { useToast } from '../lib/toast';
 import Avatar from '../components/Avatar.jsx';
 import ClientPicker from '../components/ClientPicker.jsx';
+import { BUSINESS_TYPES, BUSINESS_TYPE_LABEL, INTAKE_SCHEMAS } from '../lib/intakeSchemas.js';
+import IntakePreviewModal from '../components/IntakePreviewModal.jsx';
 
 if (typeof window !== 'undefined') gsap.registerPlugin(Draggable);
 
@@ -481,7 +483,8 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
     project_value: '',
     project_hours: '',
     currency: 'COP',
-    notification_email: ''
+    notification_email: '',
+    business_type: ''
   });
   // Owner unificado: ON → usa owner_id, OFF → usa owner_label (responsable sin cuenta).
   const [ownerHasAccount, setOwnerHasAccount] = useState(() => {
@@ -542,6 +545,7 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
 
   const [contractFile, setContractFile] = useState(null);
   const [uploadingContract, setUploadingContract] = useState(false);
+  const [intakePreviewMode, setIntakePreviewMode] = useState(null); // null | 'select' | 'view'
 
   const submit = async () => {
     if (!form.title.trim()) { showToast(t('projects.error.titleRequired'), 'error'); return; }
@@ -594,7 +598,8 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
       project_value: toNum(form.project_value),
       project_hours: toNum(form.project_hours),
       currency: form.currency || 'COP',
-      notification_email: form.notification_email.trim() || null
+      notification_email: form.notification_email.trim() || null,
+      business_type: form.business_type || null
     });
   };
 
@@ -855,6 +860,65 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
         <NewField label={t('projects.field.observation')} help={PROJECT_FIELD_HELP.observation}>
           <textarea value={form.observation} onChange={e => set('observation', e.target.value)} className="input-light h-20 resize-none" placeholder={t('projects.field.observationPlaceholder')} />
         </NewField>
+
+        {/* Selector de cuestionario que se enviará al cliente */}
+        <div className="rounded-2xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 via-violet-50/60 to-fuchsia-50/40 p-4 mt-2">
+          <div className="flex items-start gap-3 mb-3">
+            <div className="w-9 h-9 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center flex-shrink-0">
+              <ClipboardList className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-black text-violet-700 uppercase tracking-widest">Cuestionario para el cliente</p>
+              <p className="text-[11px] text-violet-900 leading-snug mt-0.5">
+                Elige uno de los 3 cuestionarios base. El cliente lo verá en su portal apenas creemos el proyecto, lo responderá ahí y nos lo enviará de vuelta cuando termine.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            {BUSINESS_TYPES.map(bt => {
+              const active = form.business_type === bt.key;
+              const qCount = INTAKE_SCHEMAS[bt.key]?.sections.reduce((a, s) => a + s.questions.length, 0) || 0;
+              return (
+                <button
+                  key={bt.key}
+                  type="button"
+                  onClick={() => set('business_type', active ? '' : bt.key)}
+                  className={`relative text-left rounded-xl border-2 px-3 py-2.5 transition ${
+                    active
+                      ? 'border-violet-600 bg-white shadow-md ring-2 ring-violet-200'
+                      : 'border-violet-200 bg-white/70 hover:border-violet-400 hover:bg-white'
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-violet-600 text-white flex items-center justify-center">
+                      <span className="text-[10px] font-black">✓</span>
+                    </span>
+                  )}
+                  <div className={`text-[11px] font-black uppercase tracking-widest ${active ? 'text-violet-700' : 'text-ink-700'}`}>
+                    {bt.label}
+                  </div>
+                  <div className="text-[10px] text-ink-500 mt-0.5 leading-snug">{bt.hint}</div>
+                  <div className="text-[9px] font-mono text-violet-600 mt-1">{qCount} preguntas</div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
+            {form.business_type ? (
+              <button
+                type="button"
+                onClick={() => setIntakePreviewMode('view')}
+                className="text-[11px] font-bold text-violet-700 hover:text-violet-900 underline"
+              >
+                Ver preguntas de &ldquo;{BUSINESS_TYPE_LABEL[form.business_type]}&rdquo;
+              </button>
+            ) : (
+              <span className="text-[10px] italic text-violet-600">
+                Opcional al crear. También se puede asignar después desde el detalle del proyecto.
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="px-6 py-4 border-t bg-ink-50/60 flex flex-wrap justify-end gap-2 flex-shrink-0">
@@ -868,6 +932,14 @@ function NewProjectForm({ mode, categories, profiles, defaultOwnerId, lockOwner,
           {uploadingContract ? t('projects.uploadingContract') : t('projects.create')}
         </button>
       </div>
+
+      <IntakePreviewModal
+        open={intakePreviewMode !== null}
+        mode={intakePreviewMode || 'select'}
+        businessType={form.business_type || undefined}
+        onClose={() => setIntakePreviewMode(null)}
+        onSelect={async (bt) => { set('business_type', bt); }}
+      />
     </div>
   );
 }

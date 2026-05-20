@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users, Plus, Search, Mail, Phone, Building2, Pause, Play, Briefcase, X, Copy, Link as LinkIcon, Check } from 'lucide-react';
+import { Users, Plus, Search, Mail, Phone, Building2, Pause, Play, Briefcase, X, Copy, Link as LinkIcon, Check, MessageCircle, Globe, IdCard, AlertCircle } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import { fetchClients, createClient, updateClient, clientProjects, assignClientToProject } from '../lib/clients';
 import { useStore } from '../lib/store';
@@ -93,9 +93,20 @@ export default function Clients() {
                   </div>
                 </div>
               </div>
+              {!c.client_data_completed && (
+                <div className="mb-3 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
+                  <AlertCircle className="w-3 h-3" /> Datos sin completar
+                </div>
+              )}
               <div className="space-y-1 text-[11px] text-ink-500">
-                <div className="flex items-center gap-2 truncate"><Mail className="w-3 h-3 flex-shrink-0" /> {c.email}</div>
-                {c.phone && <div className="flex items-center gap-2"><Phone className="w-3 h-3 flex-shrink-0" /> {c.phone}</div>}
+                <div className="flex items-center gap-2 truncate" title="Email de login"><Mail className="w-3 h-3 flex-shrink-0" /> {c.email}</div>
+                {c.contact_email && c.contact_email !== c.email && (
+                  <div className="flex items-center gap-2 truncate" title="Email de contacto"><Mail className="w-3 h-3 flex-shrink-0 text-emerald-600" /> <span className="text-emerald-700 font-bold">{c.contact_email}</span></div>
+                )}
+                {c.whatsapp && <div className="flex items-center gap-2" title="WhatsApp"><MessageCircle className="w-3 h-3 flex-shrink-0 text-emerald-600" /> <a href={`https://wa.me/${c.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="text-emerald-700 font-bold hover:underline">{c.whatsapp}</a></div>}
+                {c.phone && c.phone !== c.whatsapp && <div className="flex items-center gap-2"><Phone className="w-3 h-3 flex-shrink-0" /> {c.phone}</div>}
+                {c.country && <div className="flex items-center gap-2 truncate"><Globe className="w-3 h-3 flex-shrink-0" /> {c.country}</div>}
+                {c.id_number && <div className="flex items-center gap-2 truncate" title="Identificación"><IdCard className="w-3 h-3 flex-shrink-0" /> <span className="font-mono">{c.id_type || ''} {c.id_number}</span></div>}
                 {c.company && <div className="flex items-center gap-2 truncate"><Building2 className="w-3 h-3 flex-shrink-0" /> {c.company}</div>}
               </div>
               <div className="flex gap-2 mt-4 pt-3 border-t">
