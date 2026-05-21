@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Flag, FileText, MessageSquare, Upload, Plus, X, Download, CheckCircle2, XCircle, Clock, AlertCircle, Layers, Truck, PlayCircle, MapPin, ListTodo, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Calendar, Flag, FileText, MessageSquare, Upload, Plus, X, Download, CheckCircle2, XCircle, Clock, AlertCircle, Layers, Truck, PlayCircle, MapPin, ListTodo, AlertTriangle, BarChart3 } from 'lucide-react';
 import gsap from 'gsap';
 import { useAuth } from '../../lib/auth.jsx';
 import { supabase } from '../../lib/supabase';
@@ -9,6 +9,7 @@ import { reduced } from '../../lib/motion';
 import { calcPhaseProgress, calcProjectProgress, taskProgress } from '../../lib/utils';
 import { listClientTasks, deliverClientTask, signedUrlForTaskFile, priorityMeta, statusMeta, dueRelative } from '../../lib/clientTasks';
 import PortalIntakeSection from '../../components/PortalIntakeSection.jsx';
+import GanttCanvas from '../../components/Gantt.jsx';
 
 const STATUS_COLOR = {
   'No iniciado':  'bg-ink-100 text-ink-600',
@@ -42,12 +43,13 @@ export default function PortalProjectDetail() {
   const [busyId, setBusyId] = useState(null);
   const [adhocOpen, setAdhocOpen] = useState(false);
   const rootRef = useRef(null);
+  const ganttScrollRef = useRef(null);
 
   const load = async () => {
     const [{ data: pj }, { data: ph }, { data: ms }, { data: ds }, ctRaw] = await Promise.all([
       supabase.from('projects').select('*').eq('id', id).maybeSingle(),
-      supabase.from('phases').select('id, name, position, tasks(id, name, progress, completed, position)').eq('project_id', id).order('position'),
-      supabase.from('milestones').select('id, name, target_date, completed').eq('project_id', id).order('target_date'),
+      supabase.from('phases').select('id, name, position, start_week, start_day, duration_weeks, duration_days, tasks(id, name, progress, completed, position, start_week, start_day, duration)').eq('project_id', id).order('position'),
+      supabase.from('milestones').select('id, name, target_date, completed, color').eq('project_id', id).order('target_date'),
       supabase.from('documents').select('*').eq('project_id', id).order('created_at', { ascending: false }),
       listClientTasks(id).catch(() => [])
     ]);
@@ -268,6 +270,26 @@ export default function PortalProjectDetail() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      <div className="card-light overflow-hidden mb-5" data-fade-card>
+        <div className="px-5 py-4 border-b bg-gradient-to-r from-violet-50/40 to-transparent">
+          <h2 className="text-xs font-black uppercase tracking-widest text-ink-500 flex items-center gap-2">
+            <BarChart3 className="w-3.5 h-3.5" /> Diagrama de flujo
+          </h2>
+          <p className="text-[10px] text-ink-400 mt-1">Vista cronológica de etapas y actividades del proyecto.</p>
+        </div>
+        {phases.length === 0 ? (
+          <p className="px-5 py-6 text-xs text-ink-400">Aún no hay etapas para mostrar.</p>
+        ) : (
+          <div ref={ganttScrollRef} className="bg-white overflow-auto scroller-pro" style={{ height: 560 }}>
+            <GanttCanvas
+              project={{ ...project, phases, milestones }}
+              editable={false}
+              scrollerRef={ganttScrollRef}
+            />
           </div>
         )}
       </div>
