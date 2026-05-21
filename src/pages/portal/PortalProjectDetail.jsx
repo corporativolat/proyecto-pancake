@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Flag, FileText, MessageSquare, Upload, Plus, X, Download, CheckCircle2, XCircle, Clock, AlertCircle, Layers, Truck, PlayCircle, MapPin, ListTodo, AlertTriangle, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Calendar, Flag, FileText, MessageSquare, Upload, Plus, X, Download, CheckCircle2, XCircle, Clock, AlertCircle, Layers, Truck, PlayCircle, MapPin, ListTodo, AlertTriangle, BarChart3, Link as LinkIcon, Send } from 'lucide-react';
 import gsap from 'gsap';
 import { useAuth } from '../../lib/auth.jsx';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { reduced } from '../../lib/motion';
 import { calcPhaseProgress, calcProjectProgress, taskProgress } from '../../lib/utils';
-import { listClientTasks, deliverClientTask, signedUrlForTaskFile, priorityMeta, statusMeta, dueRelative } from '../../lib/clientTasks';
-import PortalIntakeSection from '../../components/PortalIntakeSection.jsx';
+import { listClientTasks, deliverClientTask, deliverClientTaskText, signedUrlForTaskFile, priorityMeta, statusMeta, dueRelative, looksLikeUrl } from '../../lib/clientTasks';
+import PortalQuestionnairesSection from '../../components/PortalQuestionnairesSection.jsx';
 import GanttCanvas from '../../components/Gantt.jsx';
 
 const STATUS_COLOR = {
@@ -155,6 +155,16 @@ export default function PortalProjectDetail() {
     finally { setBusyId(null); }
   };
 
+  const deliverTaskText = async ({ task, text }) => {
+    setBusyId('ct-' + task.id);
+    try {
+      await deliverClientTaskText({ task, text });
+      showToast('Enlace enviado — tu equipo fue notificado', 'success');
+      await load();
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    finally { setBusyId(null); }
+  };
+
   const downloadTaskFile = async (task) => {
     if (!task.file_path) return;
     try {
@@ -203,7 +213,7 @@ export default function PortalProjectDetail() {
 
       <TimelineSection project={project} milestones={milestones} />
 
-      <PortalIntakeSection project={project} />
+      <PortalQuestionnairesSection project={project} />
 
       <div className="card-light p-5 mb-5" data-fade-card>
         <h2 className="text-xs font-black uppercase tracking-widest text-ink-500 mb-3 flex items-center gap-2"><Flag className="w-3.5 h-3.5" /> Hitos</h2>
@@ -298,6 +308,7 @@ export default function PortalProjectDetail() {
         tasks={clientTasks}
         busyId={busyId}
         onDeliver={deliverTask}
+        onDeliverText={deliverTaskText}
         onDownload={downloadTaskFile}
       />
 
@@ -552,7 +563,7 @@ function AdhocUploader({ busy, onCancel, onSubmit }) {
   );
 }
 
-function ClientTasksSection({ tasks, busyId, onDeliver, onDownload }) {
+function ClientTasksSection({ tasks, busyId, onDeliver, onDeliverText, onDownload }) {
   if (!tasks || tasks.length === 0) return null;
 
   const open = tasks.filter(t => t.status !== 'aprobado');
@@ -571,7 +582,7 @@ function ClientTasksSection({ tasks, busyId, onDeliver, onDownload }) {
               </span>
             )}
           </h2>
-          <p className="text-[10px] text-ink-400 mt-0.5">Tu equipo te pide estos materiales para avanzar el proyecto. Sube el archivo desde aquí.</p>
+          <p className="text-[10px] text-ink-400 mt-0.5">Tu equipo te pide estos materiales para avanzar el proyecto. Responde desde aquí.</p>
         </div>
       </div>
 
@@ -586,18 +597,28 @@ function ClientTasksSection({ tasks, busyId, onDeliver, onDownload }) {
 
       <ul className="divide-y">
         {[...open, ...done].map(t => (
-          <ClientTaskRow key={t.id} task={t} busy={busyId === 'ct-' + t.id} onDeliver={onDeliver} onDownload={onDownload} />
+          <ClientTaskRow
+            key={t.id}
+            task={t}
+            busy={busyId === 'ct-' + t.id}
+            onDeliver={onDeliver}
+            onDeliverText={onDeliverText}
+            onDownload={onDownload}
+          />
         ))}
       </ul>
     </div>
   );
 }
 
-function ClientTaskRow({ task, busy, onDeliver, onDownload }) {
+function ClientTaskRow({ task, busy, onDeliver, onDeliverText, onDownload }) {
   const pm = priorityMeta(task.priority);
   const sm = statusMeta(task.status);
   const due = dueRelative(task.due_date);
   const canDeliver = task.status === 'pendiente' || task.status === 'rechazado' || task.status === 'en_progreso';
+  const isText = (task.task_type || 'file') === 'text';
+  const [textValue, setTextValue] = useState(task.response_text || '');
+
   return (
     <li className="px-5 py-4 hover:bg-ink-50 transition">
       <div className="flex items-start gap-4 flex-wrap">
@@ -609,6 +630,11 @@ function ClientTaskRow({ task, busy, onDeliver, onDownload }) {
             <span className="truncate">{task.title}</span>
             <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${pm.cls}`}>{pm.label}</span>
             <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full border ${sm.cls}`}>{sm.label}</span>
+            {isText && (
+              <span className="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border bg-sky-50 text-sky-700 border-sky-200 inline-flex items-center gap-1">
+                <LinkIcon className="w-2.5 h-2.5" /> Enlace o texto
+              </span>
+            )}
           </div>
           {task.description && <p className="text-[12px] text-ink-500 mt-1 leading-relaxed">{task.description}</p>}
           {task.due_date && (
@@ -619,20 +645,59 @@ function ClientTaskRow({ task, busy, onDeliver, onDownload }) {
               <span>{due?.label}</span>
             </div>
           )}
+          {isText && task.response_text && (
+            <div className="mt-2 bg-sky-50/60 border border-sky-200 rounded-lg px-3 py-2">
+              <div className="text-[9px] font-black uppercase tracking-widest text-sky-700 mb-1 flex items-center gap-1">
+                <LinkIcon className="w-2.5 h-2.5" /> {task.status === 'rechazado' ? 'Tu respuesta anterior' : 'Tu respuesta'}
+              </div>
+              {looksLikeUrl(task.response_text) ? (
+                <a
+                  href={task.response_text.startsWith('http') ? task.response_text : `https://${task.response_text}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="text-[12px] font-bold text-sky-700 underline break-all hover:text-sky-800"
+                >
+                  {task.response_text}
+                </a>
+              ) : (
+                <p className="text-[12px] text-sky-900 whitespace-pre-wrap break-words">{task.response_text}</p>
+              )}
+            </div>
+          )}
           {task.status === 'rechazado' && task.review_comment && (
             <div className="mt-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               <div className="text-[9px] font-black uppercase tracking-widest text-red-700 mb-0.5">Necesita correcciones</div>
               <p className="text-[11px] text-red-900 italic leading-snug">&ldquo;{task.review_comment}&rdquo;</p>
             </div>
           )}
+          {isText && canDeliver && (
+            <div className="mt-3 flex gap-2 items-start">
+              <textarea
+                value={textValue}
+                onChange={e => setTextValue(e.target.value)}
+                placeholder="Pega aquí tu enlace de Drive, Notion, Figma… o escribe la respuesta"
+                className="input-light flex-1 text-xs min-h-[64px] resize-y"
+                disabled={busy}
+                maxLength={4000}
+              />
+              <button
+                type="button"
+                onClick={() => onDeliverText({ task, text: textValue })}
+                disabled={busy || !textValue.trim()}
+                className="btn-emerald text-xs disabled:opacity-60 self-start"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{busy ? 'Enviando…' : (task.status === 'rechazado' ? 'Re-enviar' : 'Enviar')}</span>
+              </button>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-          {task.file_path && (
+          {!isText && task.file_path && (
             <button onClick={() => onDownload(task)} className="btn-soft text-xs" title="Ver archivo enviado">
               <Download className="w-3 h-3" /> {task.status === 'rechazado' ? 'Anterior' : 'Ver'}
             </button>
           )}
-          {canDeliver && (
+          {!isText && canDeliver && (
             <label className="btn-emerald cursor-pointer text-xs">
               <Upload className="w-3.5 h-3.5" />
               <span>{busy ? 'Subiendo…' : (task.status === 'rechazado' ? 'Re-enviar' : 'Entregar')}</span>

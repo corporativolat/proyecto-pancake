@@ -9,6 +9,62 @@ import { useToast } from '../lib/toast';
 
 if (typeof window !== 'undefined') gsap.registerPlugin(Draggable);
 
+// ============================================================
+// Helpers de geometría día-índice. El Gantt mide en días (0..55).
+//   - cada celda = 28px = 1 día
+//   - cada semana = 7 días
+// `phase.start_week` (1-8) + `phase.start_day` (1-7, mig-13) definen el
+// día-índice inicial de la fase. `phase.duration_days` (mig-13, nullable)
+// o `duration_weeks * 7` la duración. Idéntica fórmula para `tasks`.
+// ============================================================
+function phaseStartDayIdx(phase) {
+  return ((phase.start_week - 1) * 7) + ((phase.start_day || 1) - 1);
+}
+function phaseDurationDays(phase) {
+  return phase.duration_days != null ? phase.duration_days : (phase.duration_weeks || 1) * 7;
+}
+function taskStartDayIdx(task) {
+  return ((task.start_week - 1) * 7) + ((task.start_day || 1) - 1);
+}
+function dayIdxToWeekDay(idx) {
+  const c = Math.max(0, Math.min(55, idx));
+  return { start_week: Math.floor(c / 7) + 1, start_day: (c % 7) + 1 };
+}
+
+// Reposiciona/clampa las tareas de una fase para que TODAS queden dentro de
+// la nueva geometría de la fase y del plazo del proyecto. Devuelve un array
+// de patches `[{ id, fields }]` (solo los que cambian), listos para
+// updateTask en paralelo. NO hace red I/O.
+//
+// `phaseStart` y `phaseDur` son los nuevos valores de la fase EN DÍAS.
+// `delta` es el desplazamiento aplicado a la fase (en días) — sirve para
+// arrastrar las tareas con la fase cuando ésta se mueve; al redimensionar
+// es 0 (las tareas se quedan donde están y solo se clampean por la derecha).
+function planTaskUpdates(tasks, phaseStart, phaseDur, delta, projectMaxIdx) {
+  const phaseEnd = phaseStart + phaseDur; // exclusivo
+  const projMax = Math.max(0, projectMaxIdx);
+  const patches = [];
+  for (const tk of (tasks || [])) {
+    const oldIdx = taskStartDayIdx(tk);
+    let newIdx = oldIdx + delta;
+    let dur = Math.max(1, Math.min(56, tk.duration || 1));
+    // Acota la duración al ancho de la fase (no puede ser más larga).
+    dur = Math.min(dur, phaseDur);
+    // Encaja el inicio dentro de [phaseStart, phaseEnd - dur].
+    newIdx = Math.max(phaseStart, Math.min(phaseEnd - dur, newIdx));
+    // Y también dentro del plazo del proyecto.
+    newIdx = Math.max(0, Math.min(projMax - dur + 1, newIdx));
+    if (newIdx < 0) newIdx = 0;
+    const { start_week, start_day } = dayIdxToWeekDay(newIdx);
+    const changed = {};
+    if (start_week !== tk.start_week) changed.start_week = start_week;
+    if (start_day !== tk.start_day) changed.start_day = start_day;
+    if (dur !== tk.duration) changed.duration = dur;
+    if (Object.keys(changed).length > 0) patches.push({ id: tk.id, fields: changed });
+  }
+  return patches;
+}
+
 export default function GanttCanvas({ project, editable, onChange, onEditTask, scrollerRef }) {
   const { t } = useT();
   const headerRef = useRef(null);
@@ -70,7 +126,9 @@ export default function GanttCanvas({ project, editable, onChange, onEditTask, s
     if (!bodyRef.current) return;
     bodyRef.current.querySelectorAll('.gantt-today, .gantt-milestone').forEach(n => n.remove());
     if (project.start_date) {
-      const start = new Date(project.start_date);
+      // Parse fechas como medianoche LOCAL (no UTC) para evitar off-by-one en zonas con
+      // offset negativo. Sin el sufijo, `new Date('2026-05-21')` se interpreta como UTC.
+      const start = new Date(project.start_date + 'T00:00:00');
       const today = new Date();
       const diffDays = Math.round((today - start) / (1000 * 60 * 60 * 24));
       if (diffDays >= 0 && diffDays <= 56) {
@@ -81,7 +139,7 @@ export default function GanttCanvas({ project, editable, onChange, onEditTask, s
       }
       // milestones
       (project.milestones || []).forEach(m => {
-        const dDays = Math.round((new Date(m.target_date) - start) / (1000 * 60 * 60 * 24));
+        const dDays = Math.round((new Date(m.target_date + 'T00:00:00') - start) / (1000 * 60 * 60 * 24));
         if (dDays < 0 || dDays > 56) return;
         const flag = document.createElement('div');
         flag.className = 'gantt-milestone';
@@ -202,7 +260,19 @@ function GanttRow({ phase, pIdx, editable, maxDayIndex = 55, onChange, onEditTas
         const newDay = Math.min(7, Math.max(1, (dayIndex % 7) + 1));
         gsap.to(rect, { x: 0, left: dayIndex * DAY_PX, duration: 0.3, ease: 'power3.out' });
         if (newWeek === phase.start_week && newDay === startDay) return;
-        try { await updatePhase(phase.id, { start_week: newWeek, start_day: newDay }); await onChange(); }
+        // delta en días para acompañar las tareas hijas. Las tareas DEBEN
+        // permanecer dentro de la fase, por eso planTaskUpdates clampea.
+        const oldStart = phaseStartDayIdx(phase);
+        const newStart = dayIndex;
+        const delta = newStart - oldStart;
+        const taskPatches = planTaskUpdates(phase.tasks, newStart, durationDays, delta, maxDayIndex);
+        try {
+          await updatePhase(phase.id, { start_week: newWeek, start_day: newDay });
+          if (taskPatches.length) {
+            await Promise.all(taskPatches.map(p => updateTask(p.id, p.fields)));
+          }
+          await onChange();
+        }
         catch (e) { showToast(t('pj.errorPrefix') + e.message, 'error'); }
       }
     });
@@ -224,7 +294,16 @@ function GanttRow({ phase, pIdx, editable, maxDayIndex = 55, onChange, onEditTas
         gsap.to(rect, { width: days * DAY_PX, duration: 0.3, ease: 'power3.out' });
         if (days === durationDays) return;
         const weeks = Math.max(1, Math.min(8, Math.ceil(days / 7)));
-        try { await updatePhase(phase.id, { duration_days: days, duration_weeks: weeks }); await onChange(); }
+        // Si la fase se hizo más chica, clampea las tareas para que no se
+        // salgan del nuevo ancho. delta = 0 porque el inicio no cambió.
+        const taskPatches = planTaskUpdates(phase.tasks, phaseStartDayIdx(phase), days, 0, maxDayIndex);
+        try {
+          await updatePhase(phase.id, { duration_days: days, duration_weeks: weeks });
+          if (taskPatches.length) {
+            await Promise.all(taskPatches.map(p => updateTask(p.id, p.fields)));
+          }
+          await onChange();
+        }
         catch (e) { showToast(t('pj.errorPrefix') + e.message, 'error'); }
       }
     }) : null;
@@ -267,13 +346,13 @@ function GanttRow({ phase, pIdx, editable, maxDayIndex = 55, onChange, onEditTas
         )}
       </div>
       {phase.tasks?.map((tk, tIdx) => (
-        <GanttBar key={tk.id} task={tk} tIdx={tIdx} rowRef={rowRef} editable={editable} maxDayIndex={maxDayIndex} onChange={onChange} onEditTask={onEditTask} />
+        <GanttBar key={tk.id} task={tk} phase={phase} tIdx={tIdx} rowRef={rowRef} editable={editable} maxDayIndex={maxDayIndex} onChange={onChange} onEditTask={onEditTask} />
       ))}
     </div>
   );
 }
 
-function GanttBar({ task, tIdx, rowRef, editable, maxDayIndex = 55, onChange, onEditTask }) {
+function GanttBar({ task, phase, tIdx, rowRef, editable, maxDayIndex = 55, onChange, onEditTask }) {
   const showToast = useToast(s => s.show);
   const barRef = useRef(null);
   const handleRef = useRef(null);
@@ -282,7 +361,15 @@ function GanttBar({ task, tIdx, rowRef, editable, maxDayIndex = 55, onChange, on
   const left = (((task.start_week - 1) * 7) + (task.start_day - 1)) * 28;
   const width = task.duration * 28;
   const top = 50 + (tIdx * 44);
-  const RANGE_PX = (maxDayIndex + 1) * 28;
+  // Límites del padre: la tarea NO puede salir de la fase. También aplica el
+  // límite del proyecto, así que tomamos la intersección.
+  const phaseStart = phase ? phaseStartDayIdx(phase) : 0;
+  const phaseDur   = phase ? phaseDurationDays(phase) : (maxDayIndex + 1);
+  const phaseEnd   = phaseStart + phaseDur;                  // exclusivo, en días
+  const projectMaxIdx = maxDayIndex;                          // 0-based, inclusivo
+  // En píxeles, considerando la intersección fase ∩ proyecto.
+  const minLeftPx = phaseStart * 28;
+  const maxRightPx = Math.min(phaseEnd, projectMaxIdx + 1) * 28; // exclusivo
 
   // Tras un refresh de datos, React reaplica `left`/`width` por estilo inline
   // pero GSAP deja un transform `x` residual del arrastre => doble offset.
@@ -296,19 +383,27 @@ function GanttBar({ task, tIdx, rowRef, editable, maxDayIndex = 55, onChange, on
     const bar = barRef.current;
     const handle = handleRef.current;
 
+    // bounds en coordenadas relativas al `x` de Draggable: limitan
+    // visualmente el arrastre para que NUNCA salga de la fase.
+    const minX = minLeftPx - left;
+    const maxX = (maxRightPx - width) - left;
+
     const moveDrag = Draggable.create(bar, {
-      type: 'x', bounds: rowRef.current, inertia: false,
-      cursor: 'grabbing', edgeResistance: 0.7,
+      type: 'x', bounds: { minX, maxX }, inertia: false,
+      cursor: 'grabbing', edgeResistance: 0.85,
       dragClickables: false,
       onDragStart() { bar.style.zIndex = 60; dragMoved.current = false; },
       onDrag() { dragMoved.current = true; },
       onDragEnd: async () => {
         const dx = moveDrag[0].x;
-        const newLeftPx = Math.max(0, Math.min(RANGE_PX - width, Math.round((left + dx) / 28) * 28));
+        // Snap a día (28px) y re-clampea a la intersección fase ∩ proyecto.
+        const newLeftPx = Math.max(
+          minLeftPx,
+          Math.min(maxRightPx - width, Math.round((left + dx) / 28) * 28)
+        );
         const dayIndex = newLeftPx / 28;
         const newWeek = Math.min(8, Math.max(1, Math.floor(dayIndex / 7) + 1));
         const newDay = Math.min(7, Math.max(1, (dayIndex % 7) + 1));
-        // Snap instantáneo; el refresh posterior reaplica `left` y el efecto resetea `x`.
         gsap.set(bar, { x: newLeftPx - left });
         if (newWeek === task.start_week && newDay === task.start_day) {
           gsap.to(bar, { x: 0, duration: 0.2, ease: 'power3.out' });
@@ -323,9 +418,17 @@ function GanttBar({ task, tIdx, rowRef, editable, maxDayIndex = 55, onChange, on
     const resizeDrag = handle ? Draggable.create(handle, {
       type: 'x', cursor: 'ew-resize',
       onPress(e) { e.stopPropagation(); startW = bar.offsetWidth; },
-      onDrag() { const newW = Math.max(28, Math.min(RANGE_PX - left, startW + this.x)); bar.style.width = newW + 'px'; gsap.set(handle, { x: 0 }); },
+      onDrag() {
+        // No dejar que el extremo derecho se salga de la fase.
+        const maxW = maxRightPx - left;
+        const newW = Math.max(28, Math.min(maxW, startW + this.x));
+        bar.style.width = newW + 'px';
+        gsap.set(handle, { x: 0 });
+      },
       onDragEnd: async () => {
-        const maxDays = Math.max(1, maxDayIndex - (left / 28) + 1);
+        // Máximo en días: lo que cabe desde `left` hasta el final de la fase
+        // (que ya está acotada al plazo del proyecto en maxRightPx).
+        const maxDays = Math.max(1, (maxRightPx - left) / 28);
         const days = Math.max(1, Math.min(maxDays, Math.round(bar.offsetWidth / 28)));
         bar.style.width = (days * 28) + 'px';
         if (days === task.duration) return;
@@ -339,7 +442,7 @@ function GanttBar({ task, tIdx, rowRef, editable, maxDayIndex = 55, onChange, on
       if (resizeDrag && resizeDrag[0]) resizeDrag[0].kill();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [task.id, left, width, editable, onChange, rowRef, maxDayIndex]);
+  }, [task.id, left, width, editable, onChange, rowRef, maxDayIndex, minLeftPx, maxRightPx]);
 
   const handleClick = (e) => {
     if (dragMoved.current) { dragMoved.current = false; return; }

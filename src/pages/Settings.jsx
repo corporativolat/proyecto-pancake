@@ -21,6 +21,7 @@ export default function Settings() {
   const [landingRoute, setLandingRoute] = useState(profile?.landing_route || '/dashboard');
   const [notifEmail, setNotifEmail] = useState(profile?.notif_email_enabled ?? true);
   const [notifInapp, setNotifInapp] = useState(profile?.notif_inapp_enabled ?? true);
+  const [notifChannel, setNotifChannel] = useState(profile?.notif_channel || 'email');
   const [pass, setPass] = useState('');
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
@@ -197,7 +198,37 @@ export default function Settings() {
           <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest mb-5 flex items-center gap-2">
             <Bell className="w-3.5 h-3.5" /> {t('settings.notif.section')}
           </h3>
-          <div className="space-y-3">
+
+          {/* Canal preferido (mig-32). La campana in-app llega siempre; este
+              selector decide email vs WhatsApp para avisos automáticos. */}
+          <div className="mb-5">
+            <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-2 block">Canal preferido</label>
+            <p className="text-[11px] text-ink-500 mb-3">¿Por dónde quieres recibir avisos de proyectos, documentos y tareas?</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { v: 'email', label: 'Email',          desc: 'A tu correo' },
+                { v: 'none',  label: 'Solo en la app', desc: 'Solo la campana de la app' }
+              ].map(opt => (
+                <label
+                  key={opt.v}
+                  className={`cursor-pointer border-2 rounded-xl p-3 transition ${notifChannel === opt.v ? 'border-violet-500 bg-violet-50' : 'border-ink-100 hover:border-ink-200'}`}
+                >
+                  <input
+                    type="radio"
+                    name="notif_channel"
+                    value={opt.v}
+                    checked={notifChannel === opt.v}
+                    onChange={async () => { setNotifChannel(opt.v); await savePrefs({ notif_channel: opt.v }); }}
+                    className="sr-only"
+                  />
+                  <div className="text-[12px] font-black text-ink-800 mb-0.5">{opt.label}</div>
+                  <div className="text-[10px] text-ink-500 leading-snug">{opt.desc}</div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3 border-t pt-4">
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"

@@ -6,7 +6,7 @@ import { useAuth } from '../../lib/auth.jsx';
 import { supabase } from '../../lib/supabase';
 import { reduced } from '../../lib/motion';
 import PendingDocsBanner from '../../components/PendingDocsBanner.jsx';
-import IntakePendingBanner from '../../components/IntakePendingBanner.jsx';
+import QuestionnairePendingBanner from '../../components/QuestionnairePendingBanner.jsx';
 import { dueRelative, priorityMeta } from '../../lib/clientTasks';
 import { calcProjectProgress } from '../../lib/utils';
 
@@ -79,7 +79,7 @@ export default function PortalDashboard() {
         <p className="text-sm text-ink-500 mt-1">Resumen de tus proyectos activos.</p>
       </header>
 
-      <IntakePendingBanner />
+      <QuestionnairePendingBanner />
 
       <PendingDocsBanner />
 

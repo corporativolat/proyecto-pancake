@@ -16,6 +16,7 @@ export default function PortalProfile() {
   const [idType, setIdType]             = useState(profile?.id_type || 'CC');
   const [idNumber, setIdNumber]         = useState(profile?.id_number || '');
   const [contactEmail, setContactEmail] = useState(profile?.contact_email || '');
+  const [notifChannel, setNotifChannel] = useState(profile?.notif_channel || 'email');
   const [pwd, setPwd]         = useState('');
   const [pwd2, setPwd2]       = useState('');
   const [busy, setBusy]       = useState(false);
@@ -26,7 +27,8 @@ export default function PortalProfile() {
     try {
       const { error } = await supabase.from('profiles').update({
         name, phone, company,
-        whatsapp, country, id_type: idType, id_number: idNumber, contact_email: contactEmail
+        whatsapp, country, id_type: idType, id_number: idNumber, contact_email: contactEmail,
+        notif_channel: notifChannel
       }).eq('id', profile.id);
       if (error) throw error;
       await refresh();
@@ -97,6 +99,34 @@ export default function PortalProfile() {
           </div>
         </div>
         <Field label="Empresa"><input value={company} onChange={e => setCompany(e.target.value)} className="input-light" /></Field>
+
+        <div className="border-t pt-4 mt-2">
+          <h3 className="text-xs font-black uppercase tracking-widest text-ink-500 mb-2">Notificaciones</h3>
+          <p className="text-[11px] text-ink-500 mb-3 leading-snug">¿Cómo quieres recibir avisos de proyectos, documentos y tareas? La campana de la app siempre llega.</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { v: 'email', label: 'Email',          desc: 'A tu correo de contacto' },
+              { v: 'none',  label: 'Solo en la app', desc: 'Solo la campana de la app' }
+            ].map(opt => (
+              <label
+                key={opt.v}
+                className={`cursor-pointer border-2 rounded-xl p-3 transition ${notifChannel === opt.v ? 'border-violet-500 bg-violet-50' : 'border-ink-100 hover:border-ink-200'}`}
+              >
+                <input
+                  type="radio"
+                  name="notif_channel"
+                  value={opt.v}
+                  checked={notifChannel === opt.v}
+                  onChange={() => setNotifChannel(opt.v)}
+                  className="sr-only"
+                />
+                <div className="text-[12px] font-black text-ink-800 mb-0.5">{opt.label}</div>
+                <div className="text-[10px] text-ink-500 leading-snug">{opt.desc}</div>
+              </label>
+            ))}
+          </div>
+        </div>
+
         <button type="submit" disabled={busy} className="btn-emerald">Guardar cambios</button>
       </form>
 

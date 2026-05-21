@@ -5,23 +5,13 @@ import Avatar from './Avatar.jsx';
 import { useT } from '../lib/i18n.jsx';
 import { logger } from '../lib/logger';
 
-const KIND_LABEL = {
-  project_create: 'creó proyecto',
-  project_delete: 'eliminó proyecto',
-  project_status_change: 'cambió estado',
-  project_owner_change: 'cambió responsable',
-  project_date_change: 'cambió fecha proyectada',
-  project_delivery_change: 'cambió fecha de entrega',
-  project_contract_update: 'actualizó contrato',
-  task_complete: 'completó tarea',
-  task_uncomplete: 'reabrió tarea',
-  task_create: 'añadió tarea',
-  phase_create: 'añadió fase',
-  comment_add: 'comentó',
-  milestone_create: 'creó hito',
-  milestone_complete: 'completó hito',
-  milestone_uncomplete: 'reabrió hito',
-};
+// Mapeo kind → clave i18n. Traducidas en activity.kind.*.
+const KIND_KEYS = [
+  'project_create', 'project_delete', 'project_status_change', 'project_owner_change',
+  'project_date_change', 'project_delivery_change', 'project_contract_update',
+  'task_complete', 'task_uncomplete', 'task_create', 'phase_create', 'comment_add',
+  'milestone_create', 'milestone_complete', 'milestone_uncomplete',
+];
 
 const TAG_STYLES = {
   sistema:  'bg-ink-100 text-ink-600 border-ink-200',
@@ -64,11 +54,13 @@ export default function ActivityFeed({ projectId = null, limit = 30, compact = f
   const fmt = (iso) => {
     const d = new Date(iso);
     const diff = (Date.now() - d.getTime()) / 1000;
-    if (diff < 60) return 'ahora';
+    if (diff < 60) return t('activity.now');
     if (diff < 3600) return Math.floor(diff / 60) + 'm';
     if (diff < 86400) return Math.floor(diff / 3600) + 'h';
     return Math.floor(diff / 86400) + 'd';
   };
+
+  const kindLabel = (kind) => KIND_KEYS.includes(kind) ? t(`activity.kind.${kind}`) : kind;
 
   return (
     <div className={`card-light ${compact ? 'p-5' : 'p-7'}`} data-stagger>
@@ -90,14 +82,14 @@ export default function ActivityFeed({ projectId = null, limit = 30, compact = f
       </div>
       <div className="space-y-3">
         {loading && <p className="text-xs text-ink-400 italic">{t('activity.loading')}</p>}
-        {!loading && error && <p className="text-xs text-red-600 italic">Error: {error}</p>}
+        {!loading && error && <p className="text-xs text-red-600 italic">{t('activity.errorPrefix')}{error}</p>}
         {!loading && !error && !filtered.length && <p className="text-xs text-ink-400 italic">{t('activity.empty')}</p>}
         {filtered.map(a => (
           <div key={a.id} className="flex items-start gap-3">
             <Avatar user={a.profile} size={28} />
             <div className="flex-1 min-w-0 text-[12px]">
               <span className="font-bold text-ink-800">{a.profile?.name || t('activity.system')}</span>{' '}
-              <span className="text-ink-500">{KIND_LABEL[a.kind] || a.kind}</span>
+              <span className="text-ink-500">{kindLabel(a.kind)}</span>
               {a.project && !projectId && <> <span className="text-ink-700 font-semibold">{a.project.title}</span></>}
               {a.detail && <div className="text-ink-500 text-[11px] truncate" title={a.detail}>{a.detail}</div>}
             </div>

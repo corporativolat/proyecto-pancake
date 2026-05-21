@@ -5,16 +5,28 @@ import { logger } from './logger';
 
 const AuthCtx = createContext(null);
 
+// Capacidades por rol. Notas (mig-27):
+//   - manageTeams      → ABM de equipos (crear, asignar líder/manager).
+//   - manageOwnTeam    → gestionar SOLO el equipo propio (líder de un equipo).
+//   - inviteToTeam     → enviar invitaciones por email/whatsapp.
+//   - viewTeamProjects → ver todos los proyectos de su(s) equipo(s).
+// lider_equipos gestiona varios equipos (los suyos). lider_equipo gestiona
+// el único equipo que le asignaron.
 const PERMS = {
-  super_admin: { viewAll: true,  createProject: true,  editAll: true,  deleteProject: true,  manageUsers: true,  manageCategories: true,  viewKPIs: true, manageClients: true, manageRoles: true, staff: true },
-  admin:       { viewAll: true,  createProject: true,  editAll: true,  deleteProject: true,  manageUsers: true,  manageCategories: true,  viewKPIs: true, manageClients: true, manageRoles: false, staff: true },
-  gerente:     { viewAll: true,  createProject: true,  editAll: true,  deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: true, manageClients: false, manageRoles: false, staff: true },
-  miembro:     { viewAll: false, createProject: true,  editAll: false, deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: false, manageClients: false, manageRoles: false, staff: true },
-  cliente:     { viewAll: false, createProject: false, editAll: false, deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: false, manageClients: false, manageRoles: false, staff: false, clientPortal: true }
+  super_admin:    { viewAll: true,  createProject: true,  editAll: true,  deleteProject: true,  manageUsers: true,  manageCategories: true,  viewKPIs: true, manageClients: true, manageRoles: true,  manageTeams: true,  manageOwnTeam: true,  inviteToTeam: true,  viewTeamProjects: true,  staff: true },
+  admin:          { viewAll: true,  createProject: true,  editAll: true,  deleteProject: true,  manageUsers: true,  manageCategories: true,  viewKPIs: true, manageClients: true, manageRoles: false, manageTeams: true,  manageOwnTeam: true,  inviteToTeam: true,  viewTeamProjects: true,  staff: true },
+  gerente:        { viewAll: true,  createProject: true,  editAll: true,  deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: true, manageClients: false, manageRoles: false, manageTeams: true,  manageOwnTeam: true,  inviteToTeam: true,  viewTeamProjects: true,  staff: true },
+  lider_equipos:  { viewAll: false, createProject: true,  editAll: false, deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: true, manageClients: false, manageRoles: false, manageTeams: true,  manageOwnTeam: true,  inviteToTeam: true,  viewTeamProjects: true,  staff: true },
+  lider_equipo:   { viewAll: false, createProject: true,  editAll: false, deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: true, manageClients: false, manageRoles: false, manageTeams: false, manageOwnTeam: true,  inviteToTeam: true,  viewTeamProjects: true,  staff: true },
+  miembro:        { viewAll: false, createProject: true,  editAll: false, deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: false, manageClients: false, manageRoles: false, manageTeams: false, manageOwnTeam: false, inviteToTeam: false, viewTeamProjects: false, staff: true },
+  cliente:        { viewAll: false, createProject: false, editAll: false, deleteProject: false, manageUsers: false, manageCategories: false, viewKPIs: false, manageClients: false, manageRoles: false, manageTeams: false, manageOwnTeam: false, inviteToTeam: false, viewTeamProjects: false, staff: false, clientPortal: true }
 };
 
 export const CLIENT_ROLE = 'cliente';
-export const STAFF_ROLES = ['super_admin', 'admin', 'gerente', 'miembro'];
+export const STAFF_ROLES = ['super_admin', 'admin', 'gerente', 'lider_equipos', 'lider_equipo', 'miembro'];
+export const TEAM_LEADER_ROLES = ['lider_equipos', 'lider_equipo'];
+
+export function isTeamLeaderRole(role) { return TEAM_LEADER_ROLES.includes(role); }
 
 export function isClientRole(role) { return role === CLIENT_ROLE; }
 export function isStaffRole(role) { return STAFF_ROLES.includes(role); }

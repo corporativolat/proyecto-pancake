@@ -1,19 +1,17 @@
 ﻿import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Calendar, Maximize2, Minimize2, FileText, Trash2, X, Plus, Map as MapIcon, ChevronLeft, ChevronRight, User, Download, ChevronUp, ChevronDown, Flag, ListChecks, ClipboardList } from 'lucide-react';
+import { Calendar, Maximize2, Minimize2, FileText, Trash2, X, Plus, Map as MapIcon, ChevronLeft, ChevronRight, User, Download, ChevronUp, ChevronDown, Flag, ListChecks, Users2, GripHorizontal } from 'lucide-react';
 import gsap from 'gsap';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcPhaseProgress, calcProjectProgress, taskProgress, projectMaxDayIndex, clampSpanToProject, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, effectiveHealth, projectCompleteness, fmtMoney } from '../lib/utils';
+import { calcPhaseProgress, calcProjectProgress, taskProgress, projectMaxDayIndex, clampSpanToProject, clampSpanToPhase, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, effectiveHealth, projectCompleteness, fmtMoney } from '../lib/utils';
 import Avatar from '../components/Avatar.jsx';
 import Comments from '../components/Comments.jsx';
 import ActivityFeed from '../components/ActivityFeed.jsx';
 import ClientDocsPanel from '../components/ClientDocsPanel.jsx';
 import ClientTasksPanel from '../components/ClientTasksPanel.jsx';
-import IntakePanel from '../components/IntakePanel.jsx';
-import IntakePreviewModal from '../components/IntakePreviewModal.jsx';
-import { BUSINESS_TYPE_LABEL, INTAKE_SCHEMAS } from '../lib/intakeSchemas.js';
+import ProjectQuestionnairesSection from '../components/ProjectQuestionnairesSection.jsx';
 import { animateBars, confetti, reduced } from '../lib/motion';
 import { updateProject, deleteProjectById, setProjectMember, createPhase, updatePhase, deletePhase, createTask, updateTask, deleteTask, reorderPhases, createMilestone, updateMilestone, deleteMilestone, fetchMilestoneTemplates, applyMilestoneTemplate } from '../lib/data';
 import { supabase } from '../lib/supabase';
@@ -41,7 +39,6 @@ export default function ProjectDetail() {
   const [clientDocsBadge, setClientDocsBadge] = useState(0);
   const [showClientTasks, setShowClientTasks] = useState(false);
   const [clientTasksBadge, setClientTasksBadge] = useState(0);
-  const [intakePreviewMode, setIntakePreviewMode] = useState(null); // null | 'select' | 'view'
   const [showTeamEditor, setShowTeamEditor] = useState(false);
   const [showExec, setShowExec] = useState(false);
   const [mobileTab, setMobileTab] = useState('roadmap'); // 'roadmap' | 'gantt'
@@ -60,7 +57,7 @@ export default function ProjectDetail() {
   const phasesScrollRef = useRef(null);
   const ganttScrollRef = useRef(null);
 
-  // Badge count: docs en estado 'enviado' (por revisar) â€” independiente del modal
+  // Badge count: docs en estado 'enviado' (por revisar) — independiente del modal
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
@@ -121,9 +118,9 @@ export default function ProjectDetail() {
     }, 500);
   }, [id, patchProject, showToast, t]);
 
-  // (Eliminado el toggle de .shrink en scroll: clipaba el tÃ­tulo/botones cuando
-  // el header crecÃ­a con los campos oficiales nuevos. El header ahora mantiene
-  // su altura natural y la secciÃ³n Hoja de Ruta scrolea libremente.)
+  // (Eliminado el toggle de .shrink en scroll: clipaba el título/botones cuando
+  // el header crecía con los campos oficiales nuevos. El header ahora mantiene
+  // su altura natural y la sección Hoja de Ruta scrolea libremente.)
 
   if (!project) return <div className="flex-1 flex items-center justify-center text-ink-400">{t('pj.notFound')}</div>;
 
@@ -146,7 +143,7 @@ export default function ProjectDetail() {
   const handleDelete = async () => {
     const ok = await askConfirm({
       title: `Eliminar proyecto "${project.title}"`,
-      message: `Esto borrarÃ¡ permanentemente:\nâ€¢ El proyecto y todas sus etapas, actividades e hitos\nâ€¢ Comentarios, archivos, tareas del cliente y reportes\nâ€¢ El historial de actividad\n\nLos miembros y el cliente perderÃ¡n acceso de inmediato. No se puede recuperar.`,
+      message: `Esto borrará permanentemente:\n• El proyecto y todas sus etapas, actividades e hitos\n• Comentarios, archivos, tareas del cliente y reportes\n• El historial de actividad\n\nLos miembros y el cliente perderán acceso de inmediato. No se puede recuperar.`,
       danger: true,
       requireType: project.title,
       confirmLabel: 'ELIMINAR DEFINITIVAMENTE'
@@ -192,7 +189,7 @@ export default function ProjectDetail() {
                 onChange={e => debouncedUpdate('category_id', e.target.value)}
                 title={(() => {
                   const c = categories.find(x => x.id === project.category_id);
-                  return c ? `Tipo: ${c.name} â€” ${PROJECT_CATEGORY_HELP[c.name] || PROJECT_FIELD_HELP.category_id}` : PROJECT_FIELD_HELP.category_id;
+                  return c ? `Tipo: ${c.name} — ${PROJECT_CATEGORY_HELP[c.name] || PROJECT_FIELD_HELP.category_id}` : PROJECT_FIELD_HELP.category_id;
                 })()}
                 className="text-[10px] font-bold uppercase tracking-widest bg-violet-50 text-violet-700 px-3 py-1 rounded-full border-none focus:ring-2 focus:ring-violet-500 outline-none max-w-full">
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -213,9 +210,9 @@ export default function ProjectDetail() {
                 return (
                   <div className="inline-flex flex-nowrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full px-3 py-1 whitespace-nowrap">
                     <span title={`${t('projects.field.value')} (${cur})`}>{fmt(val)}</span>
-                    <span className="opacity-40">Â·</span>
+                    <span className="opacity-40">·</span>
                     <span title={t('projects.field.hours')} className="tabular">{hrs}h</span>
-                    <span className="opacity-40">Â·</span>
+                    <span className="opacity-40">·</span>
                     <span title={t('projects.field.perHour')} className="tabular">{fmt(rate)}/h</span>
                   </div>
                 );
@@ -277,7 +274,7 @@ export default function ProjectDetail() {
         </div>
 
         {!headerCollapsed && (<>
-        {/* Fila 1: Objetivo + ObservaciÃ³n lado a lado (mismo height) */}
+        {/* Fila 1: Objetivo + Observación lado a lado (mismo height) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pj-extra">
           <div>
             <DetailLabel label={t('pj.objectiveLabel')} help={PROJECT_FIELD_HELP.goal} />
@@ -376,19 +373,14 @@ export default function ProjectDetail() {
             <div className="flex gap-2">
               <input type="text" value={project.contract_url || ''} disabled={!editable} onChange={e => debouncedUpdate('contract_url', e.target.value)} placeholder={t('pj.contractPlaceholder')} className="input-light flex-1" />
               {project.contract_url && /^https?:\/\//i.test(project.contract_url) && (
-                <a href={project.contract_url} target="_blank" rel="noreferrer" className="btn-soft text-[10px]" title={t('pj.openContract')}>â†—</a>
+                <a href={project.contract_url} target="_blank" rel="noreferrer" className="btn-soft text-[10px]" title={t('pj.openContract')}>↗</a>
               )}
             </div>
           </div>
         </div>
 
-        {/* Fila 4: Cuestionario inicial (compacta â€” modal con preview) */}
-        <BusinessTypeRow
-          project={project}
-          editable={editable}
-          onOpenSelect={() => setIntakePreviewMode('select')}
-          onOpenView={() => setIntakePreviewMode('view')}
-        />
+        {/* Fila 5: Equipo dueño (mig-27). */}
+        <TeamRow project={project} editable={editable} onChange={refreshProjects} />
 
         {(() => {
           const memberIds = new Set(project.member_ids || []);
@@ -402,12 +394,12 @@ export default function ProjectDetail() {
                 {editable && (
                   <button onClick={() => setShowTeamEditor(s => !s)} className="btn-primary-sm text-[10px]">
                     {showTeamEditor ? <ChevronUp className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                    {showTeamEditor ? 'Cerrar' : (activeUsers.length === 0 ? 'Asignar miembros' : 'AÃ±adir / quitar')}
+                    {showTeamEditor ? 'Cerrar' : (activeUsers.length === 0 ? 'Asignar miembros' : 'Añadir / quitar')}
                   </button>
                 )}
               </div>
               {activeUsers.length === 0 ? (
-                <p className="text-[11px] text-ink-400 italic">Sin equipo asignado. {editable && 'Pulsa "Asignar miembros" para aÃ±adir personas a este proyecto.'}</p>
+                <p className="text-[11px] text-ink-400 italic">Sin equipo asignado. {editable && 'Pulsa "Asignar miembros" para añadir personas a este proyecto.'}</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {activeUsers.map(u => {
@@ -425,7 +417,7 @@ export default function ProjectDetail() {
               {showTeamEditor && editable && (
                 <div className="mt-2 p-3 bg-violet-50/40 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-2xl">
                   <div className="text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-widest mb-2">
-                    Toca un nombre para aÃ±adirlo o quitarlo
+                    Toca un nombre para añadirlo o quitarlo
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {profiles.map(u => {
@@ -442,12 +434,12 @@ export default function ProjectDetail() {
                           <Avatar user={u} size={18} />
                           {u.name}
                           {isOwner && <span className="text-[9px] opacity-80">{t('pj.leaderTag')}</span>}
-                          {isMember && !isOwner && <span className="text-[9px]">âœ“</span>}
+                          {isMember && !isOwner && <span className="text-[9px]">✓</span>}
                         </button>
                       );
                     })}
                   </div>
-                  {profiles.length === 0 && <p className="text-[11px] text-ink-500 italic mt-2">No hay otros miembros en la plataforma todavÃ­a.</p>}
+                  {profiles.length === 0 && <p className="text-[11px] text-ink-500 italic mt-2">No hay otros miembros en la plataforma todavía.</p>}
                 </div>
               )}
             </div>
@@ -456,7 +448,7 @@ export default function ProjectDetail() {
         </>)}
       </div>
 
-      {/* Tabs solo en mÃ³vil. >=md ambos paneles se muestran lado a lado. */}
+      {/* Tabs solo en móvil. >=md ambos paneles se muestran lado a lado. */}
       <div className="md:hidden flex border-b bg-white flex-shrink-0 sticky top-0 z-10">
         <button
           onClick={() => setMobileTab('roadmap')}
@@ -482,18 +474,29 @@ export default function ProjectDetail() {
           try { await reorderPhases(items); await refreshProjects(); }
           catch (e) { showToast('Error: ' + e.message, 'error'); }
         };
+        // Reordena por drag & drop. `srcIdx` y `dstIdx` son índices en
+        // project.phases. Inserta antes del dst (si srcIdx < dstIdx, el
+        // splice posterior corre los índices, lo cual está contemplado
+        // porque hacemos splice(remove) ANTES de splice(insert)).
+        const reorderToIdx = async (srcIdx, dstIdx) => {
+          if (srcIdx === dstIdx) return;
+          const arr = [...project.phases];
+          if (srcIdx < 0 || srcIdx >= arr.length || dstIdx < 0 || dstIdx > arr.length) return;
+          const [moved] = arr.splice(srcIdx, 1);
+          const insertAt = srcIdx < dstIdx ? dstIdx - 1 : dstIdx;
+          arr.splice(insertAt, 0, moved);
+          const items = arr.map((p, i) => ({ id: p.id, position: i }));
+          try { await reorderPhases(items); await refreshProjects(); }
+          catch (e) { showToast('Error: ' + e.message, 'error'); }
+        };
         const roadmapContent = (
           <>
             {project.phases?.map((ph, pIdx) => (
-              <PhaseCard key={ph.id} phase={ph} pIdx={pIdx} total={project.phases.length} project={project} editable={editable} profiles={profiles} onChange={refreshProjects} onEditTask={(tk) => setEditingTask({ ...tk, phaseId: ph.id })} onMove={(dir) => movePhase(pIdx, dir)} />
+              <PhaseCard key={ph.id} phase={ph} pIdx={pIdx} total={project.phases.length} project={project} editable={editable} profiles={profiles} onChange={refreshProjects} onEditTask={(tk) => setEditingTask({ ...tk, phaseId: ph.id })} onMove={(dir) => movePhase(pIdx, dir)} onReorderTo={reorderToIdx} />
             ))}
             <MilestonesEmptyBanner project={project} categories={categories} editable={editable} onApplied={refreshProjects} />
             <MilestonesPanel project={project} editable={editable} onChange={refreshProjects} />
-            {project.business_type && (
-              <div className="bg-white rounded-3xl shadow-sm border border-ink-100 p-5 md:p-6 mt-4">
-                <IntakePanel project={project} />
-              </div>
-            )}
+            <ProjectQuestionnairesSection project={project} editable={editable} />
             <Comments projectId={project.id} />
             <ActivityFeed projectId={project.id} compact />
           </>
@@ -567,7 +570,7 @@ export default function ProjectDetail() {
               <RoadmapPopup onClose={() => setRoadmapPopup(false)}>
                 <div className="px-4 pt-4 pb-3 border-b bg-white flex justify-between items-center gap-2 flex-shrink-0">
                   <span className="font-black text-[11px] text-ink-500 uppercase tracking-widest flex items-center gap-2 min-w-0">
-                    <MapIcon className="w-3.5 h-3.5 flex-shrink-0" /> <span className="truncate">{t('pj.roadmap')} Â· {project.title}</span>
+                    <MapIcon className="w-3.5 h-3.5 flex-shrink-0" /> <span className="truncate">{t('pj.roadmap')} · {project.title}</span>
                   </span>
                   {editable && <button onClick={handleNewPhase} className="btn-primary-sm flex-shrink-0"><Plus className="w-3 h-3" /> {t('pj.phase')}</button>}
                 </div>
@@ -583,6 +586,7 @@ export default function ProjectDetail() {
       {editingTask && (
         <TaskModal
           task={editingTask}
+          phase={project.phases?.find(ph => ph.id === editingTask.phaseId) || null}
           profiles={profiles}
           maxDayIndex={maxDayIndex}
           onClose={() => setEditingTask(null)}
@@ -602,46 +606,48 @@ export default function ProjectDetail() {
       {showFull && <FullGanttModal project={project} profiles={profiles} editable={editable} onChange={refreshProjects} onEditTask={(tk, phaseId) => setEditingTask({ ...tk, phaseId })} onClose={() => setShowFull(false)} />}
 
       {showClientDocs && (
-        <Modal title={`Documentos del cliente Â· ${project.title}`} onClose={() => setShowClientDocs(false)} footer={<></>} maxWidth="max-w-4xl">
+        <Modal title={`Documentos del cliente · ${project.title}`} onClose={() => setShowClientDocs(false)} footer={<></>} maxWidth="max-w-4xl">
           <ClientDocsPanel projectId={project.id} />
         </Modal>
       )}
       {showClientTasks && (
-        <Modal title={`Tareas del cliente Â· ${project.title}`} onClose={() => setShowClientTasks(false)} footer={<></>} maxWidth="max-w-4xl">
+        <Modal title={`Tareas del cliente · ${project.title}`} onClose={() => setShowClientTasks(false)} footer={<></>} maxWidth="max-w-4xl">
           <ClientTasksPanel project={project} />
         </Modal>
       )}
-      <IntakePreviewModal
-        open={intakePreviewMode !== null}
-        mode={intakePreviewMode || 'select'}
-        businessType={project.business_type}
-        onClose={() => setIntakePreviewMode(null)}
-        onSelect={async (bt) => {
-          try {
-            await updateProject(project.id, { business_type: bt });
-            await refreshProjects();
-            showToast(`Cuestionario "${BUSINESS_TYPE_LABEL[bt]}" asignado`, 'success');
-          } catch (e) {
-            showToast('Error: ' + (e?.message || ''), 'error');
-          }
-        }}
-      />
       {showExec && <ExecModal project={project} profiles={profiles} onClose={() => setShowExec(false)} />}
     </section>
   );
 }
 
-function PhaseCard({ phase, pIdx, total, project, editable, profiles, onChange, onEditTask, onMove }) { // eslint-disable-line no-unused-vars
+function PhaseCard({ phase, pIdx, total, project, editable, profiles, onChange, onEditTask, onMove, onReorderTo }) { // eslint-disable-line no-unused-vars
   const showToast = useToast(s => s.show);
   const { t } = useT();
   const prog = calcPhaseProgress(phase);
   const maxDayIndex = projectMaxDayIndex(project);
   const maxWeek = Math.floor(maxDayIndex / 7) + 1;
   const phaseDur = phase.duration_days != null ? phase.duration_days : (phase.duration_weeks || 1) * 7;
+  // Drag & drop nativo HTML5 para reordenar las fases. `dropZone` es
+  // 'before' | 'after' según en qué mitad de la tarjeta esté el cursor —
+  // así el usuario ve un indicador visual de dónde caerá. Usamos un
+  // *handle dedicado* (franja grip arriba) porque toda la cabecera está
+  // ocupada por <input> que absorben el mousedown y bloquean el drag.
+  const [dragging, setDragging] = useState(false);
+  const [dropZone, setDropZone] = useState(null);
+  // Sólo permitimos iniciar el drag si el último mousedown vino del handle.
+  // Si vino del nombre/inputs/botones, draggable se mantiene "true" pero
+  // el dragstart lo cancelamos.
+  const allowDragRef = useRef(false);
 
   const handleAddTask = async () => {
     try {
-      const c = clampSpanToProject({ start_week: phase.start_week, start_day: phase.start_day || 1, duration: 2 }, maxDayIndex);
+      // La actividad nace dentro de la fase. Duración por defecto = min(2, phaseDur)
+      // así no excede el ancho de la fase ni cae fuera del plazo del proyecto.
+      const defaultDur = Math.max(1, Math.min(2, phaseDur));
+      const c = clampSpanToProject(
+        { start_week: phase.start_week, start_day: phase.start_day || 1, duration: defaultDur },
+        maxDayIndex
+      );
       await createTask(phase.id, {
         name: 'Nueva Actividad', progress: 0, assignee_id: project.owner_id,
         duration: c.duration, start_week: c.start_week, start_day: c.start_day, obs: '', position: phase.tasks?.length || 0
@@ -652,8 +658,8 @@ function PhaseCard({ phase, pIdx, total, project, editable, profiles, onChange, 
 
   const toggleTask = async (task, e) => {
     const done = taskProgress(task) === 100;
-    // Captura host ANTES del await â€” React recicla el SyntheticEvent y
-    // e.currentTarget queda null despuÃ©s de cualquier await.
+    // Captura host ANTES del await — React recicla el SyntheticEvent y
+    // e.currentTarget queda null después de cualquier await.
     const host = !done ? (e.currentTarget?.closest('.relative') || e.currentTarget?.parentElement) : null;
     try {
       await updateTask(task.id, { progress: done ? 0 : 100 });
@@ -684,8 +690,78 @@ function PhaseCard({ phase, pIdx, total, project, editable, profiles, onChange, 
     catch (e) { showToast(t('pj.errorPrefix') + e.message, 'error'); }
   };
 
+  // Handlers de drag & drop nativos. La tarjeta entera es `draggable`
+  // pero el dragstart sólo se acepta si el mousedown vino del handle.
+  // Inputs/botones siguen funcionando normal porque el flag queda en
+  // false cuando se hace mousedown en ellos.
+  const onHandleMouseDown = () => { allowDragRef.current = true; };
+  const onCardMouseDown = (e) => {
+    // Cualquier mousedown que NO sea sobre el handle desactiva el drag.
+    if (!e.target.closest?.('[data-drag-handle="1"]')) {
+      allowDragRef.current = false;
+    }
+  };
+  const onDragStart = (e) => {
+    if (!editable || !allowDragRef.current) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData('text/plain', String(pIdx));
+    e.dataTransfer.effectAllowed = 'move';
+    setDragging(true);
+  };
+  const onDragEnd = () => {
+    setDragging(false);
+    setDropZone(null);
+    allowDragRef.current = false;
+  };
+  const onDragOver = (e) => {
+    if (!editable) return;
+    // Sin preventDefault, el navegador no acepta el drop.
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const r = e.currentTarget.getBoundingClientRect();
+    const isBefore = (e.clientY - r.top) < (r.height / 2);
+    setDropZone(isBefore ? 'before' : 'after');
+  };
+  const onDragLeave = () => setDropZone(null);
+  const onDrop = (e) => {
+    if (!editable) return;
+    e.preventDefault();
+    const src = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    const r = e.currentTarget.getBoundingClientRect();
+    const isBefore = (e.clientY - r.top) < (r.height / 2);
+    setDropZone(null);
+    setDragging(false);
+    allowDragRef.current = false;
+    if (!Number.isFinite(src)) return;
+    const dst = isBefore ? pIdx : pIdx + 1;
+    if (src === dst || src === dst - 1) return; // sin cambio
+    onReorderTo?.(src, dst);
+  };
+
   return (
-    <div className="bg-white border border-ink-100 rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition">
+    <div
+      draggable={editable}
+      onMouseDown={onCardMouseDown}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={`bg-white border border-ink-100 rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition relative ${dragging ? 'opacity-40 scale-[0.99]' : ''} ${dropZone === 'before' ? 'ring-2 ring-violet-500 ring-offset-2 shadow-violet-200' : ''} ${dropZone === 'after' ? 'ring-2 ring-violet-500 ring-offset-2 shadow-violet-200' : ''}`}
+    >
+      {editable && (
+        <div
+          data-drag-handle="1"
+          onMouseDown={onHandleMouseDown}
+          className="flex items-center justify-center gap-1.5 py-1.5 bg-ink-50 border-b text-ink-300 cursor-grab active:cursor-grabbing hover:bg-violet-50 hover:text-violet-500 transition select-none"
+          title="Arrastra desde aquí para reordenar"
+        >
+          <GripHorizontal className="w-3.5 h-3.5" />
+          <span className="text-[9px] font-black uppercase tracking-widest">Mover fase</span>
+        </div>
+      )}
       <div className="p-4 bg-gradient-to-r from-ink-50 to-white border-b flex justify-between items-center">
         <div className="flex-1 min-w-0">
           <input defaultValue={phase.name} disabled={!editable} onBlur={e => e.target.value !== phase.name && patchPhase('name', e.target.value)} className="font-bold text-ink-900 bg-transparent border-none p-0 focus:ring-0 w-full text-sm tracking-tight mb-1.5 outline-none" />
@@ -703,8 +779,8 @@ function PhaseCard({ phase, pIdx, total, project, editable, profiles, onChange, 
         </div>
         {editable && (
           <div className="flex flex-col">
-            <button onClick={() => onMove(-1)} disabled={pIdx === 0} className="p-1 text-ink-300 hover:text-violet-600 disabled:opacity-30 transition"><ChevronUp className="w-3 h-3" /></button>
-            <button onClick={() => onMove(1)} disabled={pIdx === total - 1} className="p-1 text-ink-300 hover:text-violet-600 disabled:opacity-30 transition"><ChevronDown className="w-3 h-3" /></button>
+            <button onClick={() => onMove(-1)} disabled={pIdx === 0} className="p-1 text-ink-300 hover:text-violet-600 disabled:opacity-30 transition" title="Subir"><ChevronUp className="w-3 h-3" /></button>
+            <button onClick={() => onMove(1)} disabled={pIdx === total - 1} className="p-1 text-ink-300 hover:text-violet-600 disabled:opacity-30 transition" title="Bajar"><ChevronDown className="w-3 h-3" /></button>
           </div>
         )}
         {editable && <button onClick={removePhase} className="p-2 text-ink-300 hover:text-red-500 transition ml-1"><Trash2 className="w-3.5 h-3.5" /></button>}
@@ -729,12 +805,12 @@ function PhaseCard({ phase, pIdx, total, project, editable, profiles, onChange, 
                     {assignee ? <Avatar user={assignee} size={14} /> : <User className="w-3 h-3" />}
                     {assignee?.name || t('common.unassigned')}
                   </span>
-                  <span className="text-ink-200">â€¢</span>
+                  <span className="text-ink-200">•</span>
                   <span className="tabular">S{tk.start_week} D{tk.start_day}</span>
-                  <span className="text-ink-200">â€¢</span>
+                  <span className="text-ink-200">•</span>
                   <span className="tabular">{tk.duration}d</span>
-                  {tk.subtasks?.length > 0 && <><span className="text-ink-200">â€¢</span><span className="tabular flex items-center gap-0.5"><ListChecks className="w-2.5 h-2.5" />{tk.subtasks.filter(s => s.completed).length}/{tk.subtasks.length}</span></>}
-                  {tk.attachments?.length > 0 && <><span className="text-ink-200">â€¢</span><span className="tabular">ðŸ“Ž{tk.attachments.length}</span></>}
+                  {tk.subtasks?.length > 0 && <><span className="text-ink-200">•</span><span className="tabular flex items-center gap-0.5"><ListChecks className="w-2.5 h-2.5" />{tk.subtasks.filter(s => s.completed).length}/{tk.subtasks.length}</span></>}
+                  {tk.attachments?.length > 0 && <><span className="text-ink-200">•</span><span className="tabular">📎{tk.attachments.length}</span></>}
                   {tk.tags?.length > 0 && tk.tags.map(tg => <span key={tg} className="bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-bold">#{tg}</span>)}
                 </div>
                 <div className="flex items-center gap-2 mt-1.5">
@@ -774,55 +850,50 @@ function DetailLabel({ label, help }) {
   );
 }
 
-// Fila compacta de "Cuestionario inicial":
-//   - sin asignar: botÃ³n "Asignar cuestionario" que abre el modal de selecciÃ³n.
-//   - asignado: pill read-only con tipo, # de preguntas y enlace "Ver detalle".
-// Una vez asignado NO se permite cambiarlo (el cliente puede haber empezado
-// a responder). Para cambiarlo habrÃ­a que limpiar el intake_form manualmente
-// desde la BD.
-function BusinessTypeRow({ project, editable, onOpenSelect, onOpenView }) {
-  const bt = project.business_type;
-  const schema = bt ? INTAKE_SCHEMAS[bt] : null;
-  const totalQs = schema?.sections.reduce((acc, s) => acc + s.questions.length, 0) || 0;
+// Fila para asignar / cambiar el equipo dueño del proyecto (mig-27).
+// Solo editable si el actor tiene permisos sobre el proyecto. El admin/gerente
+// puede mover entre cualquier equipo; un lider_equipos solo verá en el
+// dropdown los equipos que gestiona (vía RLS de fetchTeams).
+function TeamRow({ project, editable, onChange }) {
+  const teams = useStore(s => s.teams);
+  const showToast = useToast(s => s.show);
+  const current = teams.find(tm => tm.id === project.team_id);
 
-  if (!bt) {
-    return (
-      <div className="mt-2 pj-extra">
-        <DetailLabel
-          label="Cuestionario inicial"
-          help="Define quÃ© cuestionario base llenarÃ¡ el cliente en su portal. Una vez asignado no se podrÃ¡ cambiar."
-        />
-        <button
-          type="button"
-          onClick={onOpenSelect}
-          disabled={!editable}
-          className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          <ClipboardList className="w-3.5 h-3.5" /> Asignar cuestionario
-        </button>
-      </div>
-    );
-  }
+  const onPick = async (newId) => {
+    try {
+      await updateProject(project.id, { team_id: newId || null });
+      await onChange();
+      showToast(newId ? 'Equipo asignado' : 'Equipo removido');
+    } catch (e) {
+      showToast('Error: ' + (e?.message || ''), 'error');
+    }
+  };
 
   return (
     <div className="mt-2 pj-extra">
-      <DetailLabel label="Cuestionario inicial" />
-      <div className="inline-flex items-center gap-2 flex-wrap bg-violet-50 border border-violet-200 rounded-full pl-3 pr-1.5 py-1">
-        <ClipboardList className="w-3.5 h-3.5 text-violet-700" />
-        <span className="text-[11px] font-black tracking-tight text-violet-800">{BUSINESS_TYPE_LABEL[bt]}</span>
-        <span className="text-[10px] font-mono text-violet-600 bg-white/70 px-1.5 py-0.5 rounded-full">{totalQs} preg.</span>
-        <button
-          type="button"
-          onClick={onOpenView}
-          className="text-[10px] font-bold text-violet-700 hover:text-violet-900 bg-white border border-violet-200 hover:border-violet-400 rounded-full px-2 py-0.5 transition"
-        >
-          Ver detalle
-        </button>
-        <span className="text-[9px] font-bold text-violet-600/70 italic px-1.5">ðŸ”’ No editable</span>
+      <DetailLabel label="Equipo" help="Equipo dueño del proyecto. Su líder y miembros podrán verlo y editarlo." />
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="inline-flex items-center gap-2 bg-ink-50 border border-ink-200 rounded-full pl-2 pr-1.5 py-1">
+          <Users2 className="w-3.5 h-3.5" style={{ color: current?.color || '#a1a1aa' }} />
+          <span className="text-[11px] font-black tracking-tight text-ink-800">{current?.name || 'Sin equipo'}</span>
+        </div>
+        {editable && (
+          <select
+            value={project.team_id || ''}
+            onChange={e => onPick(e.target.value)}
+            className="input-light !py-1 !text-[11px] !w-auto"
+          >
+            <option value="">— sin equipo —</option>
+            {teams.map(tm => (
+              <option key={tm.id} value={tm.id}>{tm.name}</option>
+            ))}
+          </select>
+        )}
       </div>
     </div>
   );
 }
+
 
 function NumLabel({ label, value, max, disabled, onSave }) {
   const { t } = useT();
@@ -869,7 +940,7 @@ function NumLabel({ label, value, max, disabled, onSave }) {
           disabled={disabled || v <= 1}
           className="w-5 h-6 flex items-center justify-center text-ink-500 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 rounded transition disabled:opacity-30 disabled:cursor-not-allowed"
           title={t('pj.decrease')}
-        >âˆ’</button>
+        >−</button>
         <input
           ref={inputRef}
           type="number" min="1" max={max} value={v} disabled={disabled}
@@ -889,7 +960,7 @@ function NumLabel({ label, value, max, disabled, onSave }) {
 }
 
 
-function TaskModal({ task, profiles, maxDayIndex = 55, onClose, onSave, onDelete }) {
+function TaskModal({ task, phase, profiles, maxDayIndex = 55, onClose, onSave, onDelete }) {
   const { profile: currentProfile } = useAuth();
   const { t: tr } = useT();
   const showToast = useToast(s => s.show);
@@ -935,14 +1006,19 @@ function TaskModal({ task, profiles, maxDayIndex = 55, onClose, onSave, onDelete
           <button onClick={onDelete} className="btn-danger mr-auto"><Trash2 className="w-3.5 h-3.5" /></button>
           <button onClick={onClose} className="btn-ghost">{tr('common.cancel')}</button>
           <button onClick={() => {
-            const span = clampSpanToProject({ start_week: t.start_week, start_day: t.start_day, duration: t.duration }, maxDayIndex);
+            // Clampea a la fase (que ya está clampeada al proyecto). Las actividades
+            // SIEMPRE deben quedar dentro de su fase padre — si no hay fase (caso raro,
+            // tarea huérfana), cae al clamp solo de proyecto.
+            const span = phase
+              ? clampSpanToPhase({ start_week: t.start_week, start_day: t.start_day, duration: t.duration }, phase, maxDayIndex)
+              : clampSpanToProject({ start_week: t.start_week, start_day: t.start_day, duration: t.duration }, maxDayIndex);
             onSave({ name: t.name, assignee_id: t.assignee_id || null, duration: span.duration, start_week: span.start_week, start_day: span.start_day, progress: Math.max(0, Math.min(100, parseInt(t.progress) || 0)), obs: t.obs, subtasks: t.subtasks, tags: t.tags, priority: t.priority, attachments: t.attachments });
           }} className="btn-primary">{tr('common.save')}</button>
         </>
       )}>
       <Field label={tr('pj.task.name')}><input value={t.name} onChange={e => setT({ ...t, name: e.target.value })} className="input-light" /></Field>
 
-      <Field label={`${tr('pj.task.progress')} Â· ${t.progress}%`}>
+      <Field label={`${tr('pj.task.progress')} · ${t.progress}%`}>
         <div className="flex items-center gap-3">
           <input
             type="range" min="0" max="100" step="5" value={t.progress}
@@ -1025,7 +1101,7 @@ function TaskModal({ task, profiles, maxDayIndex = 55, onClose, onSave, onDelete
         <div className="space-y-2 mb-2">
           {t.attachments.map((att, i) => (
             <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-ink-50 group">
-              <span className="text-base">ðŸ“Ž</span>
+              <span className="text-base">📎</span>
               <a href={att.url} target="_blank" rel="noreferrer" className="flex-1 truncate text-[12px] font-semibold hover:text-violet-600">{att.name}</a>
               <span className="text-[10px] text-ink-400 tabular">{fmtSize(att.size)}</span>
               <button onClick={() => removeAtt(att)} className="text-ink-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3" /></button>
@@ -1162,7 +1238,7 @@ function MilestonesEmptyBanner({ project, categories, editable, onApplied }) {
   return (
     <div className="card-light p-5 border-2 border-amber-200 bg-amber-50" data-stagger>
       <div className="flex items-start gap-3">
-        <span className="text-2xl leading-none">ðŸš©</span>
+        <span className="text-2xl leading-none">🚩</span>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-black text-amber-900">{t('pj.tpl.bannerTitle')}</p>
           <p className="text-[11px] text-amber-800 mt-1">{t('pj.tpl.bannerBody')}</p>
@@ -1206,7 +1282,7 @@ function MilestonesPanel({ project, editable, onChange }) {
   return (
     <div className="bg-white border border-ink-100 rounded-2xl shadow-sm overflow-hidden">
       <div className="p-4 bg-gradient-to-r from-amber-50 to-white border-b flex justify-between items-center">
-        <span className="font-bold text-sm flex items-center gap-2"><Flag className="w-4 h-4 text-amber-600" /> {t('pj.milestones.title')} Â· {ms.length}</span>
+        <span className="font-bold text-sm flex items-center gap-2"><Flag className="w-4 h-4 text-amber-600" /> {t('pj.milestones.title')} · {ms.length}</span>
         {editable && <button onClick={() => setAdding(!adding)} className="btn-primary-sm"><Plus className="w-3 h-3" /> {t('pj.milestones.add')}</button>}
       </div>
       {adding && (
@@ -1215,7 +1291,7 @@ function MilestonesPanel({ project, editable, onChange }) {
           <div className="flex gap-2">
             <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input-light flex-1" />
             <button onClick={create} className="btn-primary-sm">OK</button>
-            <button onClick={() => { setAdding(false); setName(''); setDate(''); }} className="btn-ghost text-xs">Ã—</button>
+            <button onClick={() => { setAdding(false); setName(''); setDate(''); }} className="btn-ghost text-xs">×</button>
           </div>
         </div>
       )}
@@ -1228,7 +1304,7 @@ function MilestonesPanel({ project, editable, onChange }) {
             </button>
             <div className="flex-1 min-w-0">
               <div className={`text-[12px] font-semibold ${m.completed ? 'line-through text-ink-400' : ''}`}>{m.name}</div>
-              <div className="text-[10px] text-ink-400 tabular">{new Date(m.target_date).toLocaleDateString(dateLocale, { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+              <div className="text-[10px] text-ink-400 tabular">{new Date(m.target_date + 'T00:00:00').toLocaleDateString(dateLocale, { day: '2-digit', month: 'short', year: 'numeric' })}</div>
             </div>
             {editable && <button onClick={() => remove(m.id)} className="text-ink-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3" /></button>}
           </div>
@@ -1276,7 +1352,7 @@ function FullGanttModal({ project, profiles, editable, onChange, onEditTask, onC
     <div ref={overlayRef} className="modal-overlay !p-4">
       <div ref={cardRef} className="bg-white w-full h-full rounded-3xl shadow-2xl overflow-hidden flex flex-col">
         <div className="p-6 border-b flex justify-between items-center bg-white flex-shrink-0">
-          <h3 className="text-2xl font-black text-ink-900 tracking-tight">{t('pj.full.title')} Â· {project.title}</h3>
+          <h3 className="text-2xl font-black text-ink-900 tracking-tight">{t('pj.full.title')} · {project.title}</h3>
           <div className="flex items-center gap-4">
             {editable && <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-full uppercase tracking-widest">{t('pj.full.editActive')}</span>}
             <div className="flex items-center gap-2">

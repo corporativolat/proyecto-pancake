@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Tag, Plus, X, Bug, Flag, FileText } from 'lucide-react';
+import { Users, Tag, Plus, X, Bug, Flag, FileText, Layers, ClipboardList, Pencil } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
@@ -13,9 +13,14 @@ import {
   fetchMilestoneTemplates, createMilestoneTemplate, updateMilestoneTemplate, deleteMilestoneTemplate,
   fetchDocumentTemplates, createDocumentTemplate, updateDocumentTemplate, deleteDocumentTemplate
 } from '../lib/data';
+import {
+  fetchPlatforms, createPlatform, updatePlatform, deletePlatform,
+  fetchQuestionnaireTemplates, createQuestionnaireTemplate, updateQuestionnaireTemplate, deleteQuestionnaireTemplate
+} from '../lib/questionnaires';
 import { useToast } from '../lib/toast';
 import { askConfirm } from '../lib/confirm.jsx';
 import Modal from '../components/Modal.jsx';
+import QuestionnaireEditor from '../components/QuestionnaireEditor.jsx';
 
 export default function Admin() {
   const profiles = useStore(s => s.profiles);
@@ -149,6 +154,8 @@ export default function Admin() {
 
         <MilestoneTemplatesSection categories={categories} />
         <DocumentTemplatesSection categories={categories} />
+        <PlatformsSection />
+        <QuestionnaireTemplatesSection />
       </div>
 
       {editing && (
@@ -159,9 +166,21 @@ export default function Admin() {
           </div>
           <Field label={t('admin.field.role')}>
             <select value={editing.role} onChange={e => setEditing({ ...editing, role: e.target.value })} className="input-light">
+              {/* Lista canónica de roles staff. `cliente` se gestiona desde la página
+                  de Clientes; `super_admin` solo se asigna por SQL. Mostramos super_admin
+                  como opción solo si el usuario actual ya lo es para no perder el rol al
+                  editar a otro super_admin. */}
+              {(profile?.role === 'super_admin' || editing.role === 'super_admin') && (
+                <option value="super_admin">{t('admin.role.superAdmin') || 'Super admin'}</option>
+              )}
               <option value="admin">{t('admin.role.admin')}</option>
               <option value="gerente">{t('admin.role.gerente')}</option>
+              <option value="lider_equipos">{t('admin.role.liderEquipos') || 'Líder de equipos'}</option>
+              <option value="lider_equipo">{t('admin.role.liderEquipo') || 'Líder del equipo'}</option>
               <option value="miembro">{t('admin.role.miembro')}</option>
+              {editing.role === 'cliente' && (
+                <option value="cliente">{t('admin.role.cliente') || 'Cliente'}</option>
+              )}
             </select>
           </Field>
           <Field label={t('admin.field.avatar')}>
@@ -431,5 +450,336 @@ function DocumentTemplatesSection({ categories }) {
         })}
       </div>
     </div>
+  );
+}
+
+// =============================================================
+// PLATFORMS (mig-29) — catálogo de productos Pancake al que se anclan
+// los cuestionarios. Solo admin.
+// =============================================================
+const PLATFORM_COLORS = ['#22c55e','#3b82f6','#f59e0b','#8b5cf6','#ec4899','#06b6d4','#ef4444','#10b981','#f97316','#6366f1'];
+
+function PlatformsSection() {
+  const { t } = useT();
+  const showToast = useToast(s => s.show);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const reload = async () => {
+    setLoading(true);
+    try { setItems(await fetchPlatforms() || []); }
+    catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
+    finally { setLoading(false); }
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload(); }, []);
+
+  const add = async () => {
+    try {
+      await createPlatform({
+        slug: 'nueva-' + Math.random().toString(36).slice(2, 6),
+        name: 'Nueva plataforma',
+        description: '',
+        icon: '✨',
+        color: PLATFORM_COLORS[items.length % PLATFORM_COLORS.length],
+        position: items.length
+      });
+      await reload();
+    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
+  };
+
+  const patch = async (id, change) => {
+    try {
+      await updatePlatform(id, change);
+      setItems(prev => prev.map(i => i.id === id ? { ...i, ...change } : i));
+    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
+  };
+
+  const remove = async (id) => {
+    const ok = await askConfirm({ title: 'Eliminar plataforma', message: 'Se borrarán también todas sus plantillas de cuestionario. ¿Continuar?', danger: true });
+    if (!ok) return;
+    try {
+      await deletePlatform(id);
+      setItems(prev => prev.filter(i => i.id !== id));
+    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
+  };
+
+  return (
+    <div className="card-light p-7 mt-6" data-stagger>
+      <div className="flex justify-between items-center mb-5">
+        <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest flex items-center gap-2">
+          <Layers className="w-3.5 h-3.5" /> Plataformas
+        </h3>
+        <button onClick={add} className="btn-primary-sm"><Plus className="w-3.5 h-3.5" /> Plataforma</button>
+      </div>
+      <p className="text-[11px] text-ink-400 italic mb-4">Productos Pancake a los que se anclan los cuestionarios (Botcake, CRM, Pancake…).</p>
+
+      {loading && <p className="text-xs text-ink-400 italic">Cargando…</p>}
+      {!loading && items.length === 0 && <p className="text-xs text-ink-400 italic">Aún no hay plataformas.</p>}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {items.map(p => (
+          <div key={p.id} className="p-4 rounded-2xl border border-ink-100 hover:shadow-md transition group">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shadow-sm" style={{ background: p.color + '22', color: p.color }}>
+                <span>{p.icon || '🔹'}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <input
+                  defaultValue={p.name}
+                  onBlur={e => e.target.value !== p.name && patch(p.id, { name: e.target.value.trim() || p.name })}
+                  className="w-full text-sm font-black text-ink-900 bg-transparent border-0 outline-none p-0"
+                />
+                <input
+                  defaultValue={p.slug}
+                  onBlur={e => {
+                    const v = e.target.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+                    if (v && v !== p.slug) patch(p.id, { slug: v });
+                  }}
+                  className="w-full text-[10px] font-mono text-ink-400 bg-transparent border-0 outline-none p-0 lowercase"
+                />
+              </div>
+              <button onClick={() => remove(p.id)} className="text-ink-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <textarea
+              defaultValue={p.description || ''}
+              onBlur={e => e.target.value !== p.description && patch(p.id, { description: e.target.value })}
+              placeholder="Descripción breve…"
+              rows={2}
+              className="input-light text-xs resize-y w-full mb-2"
+            />
+
+            <div className="flex items-center gap-2">
+              <input
+                defaultValue={p.icon || ''}
+                onBlur={e => e.target.value !== p.icon && patch(p.id, { icon: e.target.value.slice(0, 4) })}
+                placeholder="emoji"
+                className="input-light text-sm w-16 text-center"
+                maxLength={4}
+              />
+              <input
+                type="color"
+                defaultValue={p.color}
+                onBlur={e => e.target.value !== p.color && patch(p.id, { color: e.target.value })}
+                className="w-7 h-7 rounded cursor-pointer border-0"
+              />
+              <label className="flex items-center gap-1.5 text-[11px] font-bold text-ink-600 cursor-pointer ml-auto">
+                <input type="checkbox" checked={p.active} onChange={e => patch(p.id, { active: e.target.checked })} className="accent-violet-600" />
+                Activa
+              </label>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================
+// QUESTIONNAIRE TEMPLATES (mig-29) — plantillas por plataforma.
+// =============================================================
+function QuestionnaireTemplatesSection() {
+  const { t } = useT();
+  const showToast = useToast(s => s.show);
+  const [platforms, setPlatforms] = useState([]);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null);
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const [pls, tps] = await Promise.all([fetchPlatforms(), fetchQuestionnaireTemplates()]);
+      setPlatforms(pls || []);
+      setItems(tps || []);
+    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
+    finally { setLoading(false); }
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload(); }, []);
+
+  const add = async (platformId) => {
+    try {
+      const created = await createQuestionnaireTemplate({
+        platform_id: platformId,
+        name: 'Nuevo cuestionario',
+        description: '',
+        body: { sections: [] },
+        position: items.filter(i => i.platform_id === platformId).length,
+        active: true
+      });
+      await reload();
+      setEditing(created);
+    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
+  };
+
+  const patch = async (id, change) => {
+    try {
+      await updateQuestionnaireTemplate(id, change);
+      setItems(prev => prev.map(i => i.id === id ? { ...i, ...change } : i));
+      if (editing?.id === id) setEditing(prev => ({ ...prev, ...change }));
+    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
+  };
+
+  const remove = async (id) => {
+    const ok = await askConfirm({ title: 'Eliminar plantilla', message: '¿Eliminar esta plantilla? Los cuestionarios ya enviados a proyectos no se ven afectados (son copias).', danger: true });
+    if (!ok) return;
+    try {
+      await deleteQuestionnaireTemplate(id);
+      setItems(prev => prev.filter(i => i.id !== id));
+      if (editing?.id === id) setEditing(null);
+    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
+  };
+
+  return (
+    <div className="card-light p-7 mt-6" data-stagger>
+      <div className="flex justify-between items-center mb-5">
+        <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest flex items-center gap-2">
+          <ClipboardList className="w-3.5 h-3.5" /> Plantillas de cuestionarios
+        </h3>
+        <span className="text-[10px] text-ink-400">Una plantilla pertenece a una plataforma.</span>
+      </div>
+
+      {loading && <p className="text-xs text-ink-400 italic">Cargando…</p>}
+      {!loading && platforms.length === 0 && <p className="text-xs text-ink-400 italic">Crea primero una plataforma.</p>}
+
+      <div className="space-y-5">
+        {platforms.map(pl => {
+          const tpls = items.filter(i => i.platform_id === pl.id);
+          return (
+            <div key={pl.id} className="rounded-2xl border border-ink-100 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ background: pl.color + '22', color: pl.color }}>{pl.icon || '🔹'}</span>
+                  <span className="text-sm font-black text-ink-800">{pl.name}</span>
+                  <span className="text-[10px] font-bold text-ink-400 bg-ink-100 px-2 py-0.5 rounded-full tabular">{tpls.length}</span>
+                </div>
+                <button onClick={() => add(pl.id)} className="btn-primary-sm">
+                  <Plus className="w-3.5 h-3.5" /> Cuestionario
+                </button>
+              </div>
+
+              {tpls.length === 0 ? (
+                <p className="text-[11px] text-ink-400 italic">Sin plantillas todavía.</p>
+              ) : (
+                <div className="space-y-2">
+                  {tpls.map(tpl => {
+                    const qCount = (tpl.body?.sections || []).reduce((acc, s) => acc + (s.questions?.length || 0), 0);
+                    return (
+                      <div key={tpl.id} className="grid grid-cols-12 gap-2 items-center group">
+                        <input
+                          defaultValue={tpl.name}
+                          onBlur={e => e.target.value !== tpl.name && patch(tpl.id, { name: e.target.value.trim() || tpl.name })}
+                          className="input-light text-xs col-span-4"
+                          placeholder="Nombre"
+                        />
+                        <input
+                          defaultValue={tpl.description || ''}
+                          onBlur={e => e.target.value !== tpl.description && patch(tpl.id, { description: e.target.value })}
+                          className="input-light text-xs col-span-4"
+                          placeholder="Descripción"
+                        />
+                        <span className="text-[10px] font-bold text-ink-500 col-span-1 tabular text-center">{qCount} P</span>
+                        <label className="flex items-center gap-1 text-[10px] font-bold text-ink-600 col-span-1 cursor-pointer">
+                          <input type="checkbox" checked={tpl.active} onChange={e => patch(tpl.id, { active: e.target.checked })} className="accent-violet-600" />
+                          Activa
+                        </label>
+                        <div className="col-span-2 flex items-center gap-1 justify-end">
+                          <button onClick={() => setEditing(tpl)} className="text-violet-600 hover:text-violet-900 text-[11px] font-bold inline-flex items-center gap-1" title="Editar contenido">
+                            <Pencil className="w-3.5 h-3.5" /> Editar
+                          </button>
+                          <button onClick={() => remove(tpl.id)} className="text-ink-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {editing && (
+        <Modal
+          title={`Editor — ${editing.name}`}
+          maxWidth="max-w-5xl"
+          onClose={() => setEditing(null)}
+          footer={
+            <button onClick={() => setEditing(null)} className="btn-primary">Listo</button>
+          }
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            <div>
+              <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-1.5 block">Nombre</label>
+              <input
+                value={editing.name}
+                onChange={e => setEditing({ ...editing, name: e.target.value })}
+                onBlur={() => patch(editing.id, { name: editing.name })}
+                className="input-light text-sm font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest mb-1.5 block">Descripción</label>
+              <input
+                value={editing.description || ''}
+                onChange={e => setEditing({ ...editing, description: e.target.value })}
+                onBlur={() => patch(editing.id, { description: editing.description || '' })}
+                className="input-light text-sm"
+                placeholder="Breve descripción para el equipo"
+              />
+            </div>
+          </div>
+          <DebouncedTemplateBodyEditor
+            template={editing}
+            onLocalUpdate={(nextBody) => setEditing(prev => ({ ...prev, body: nextBody }))}
+            onPersist={async (nextBody) => {
+              try {
+                await updateQuestionnaireTemplate(editing.id, { body: nextBody });
+                setItems(prev => prev.map(i => i.id === editing.id ? { ...i, body: nextBody } : i));
+              } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
+            }}
+          />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// Debounce 800ms el guardado del body de una plantilla. Sin esto, cada
+// tecleo del editor rich-text dispara una PATCH al server (audit C1).
+function DebouncedTemplateBodyEditor({ template, onLocalUpdate, onPersist }) {
+  const timer = useRef(null);
+  const pendingRef = useRef(null);
+  // Flush al desmontar/cambiar de plantilla.
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+    if (pendingRef.current !== null) {
+      const body = pendingRef.current;
+      pendingRef.current = null;
+      onPersist(body);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template.id]);
+
+  return (
+    <QuestionnaireEditor
+      value={template.body || { sections: [] }}
+      onChange={(nextBody) => {
+        onLocalUpdate(nextBody);
+        pendingRef.current = nextBody;
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => {
+          const body = pendingRef.current;
+          pendingRef.current = null;
+          onPersist(body);
+        }, 800);
+      }}
+    />
   );
 }

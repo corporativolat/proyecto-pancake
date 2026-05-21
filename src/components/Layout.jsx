@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FolderKanban, ShieldCheck, Plus, LogOut, Settings as SettingsIcon, Search, Moon, Sun, Menu, Briefcase } from 'lucide-react';
+import { LayoutDashboard, Users, FolderKanban, ShieldCheck, Plus, LogOut, Settings as SettingsIcon, Search, Moon, Sun, Menu, Briefcase, Users2 } from 'lucide-react';
 import NotifBell from './NotifBell.jsx';
 import gsap from 'gsap';
 import { useAuth } from '../lib/auth.jsx';
@@ -85,7 +85,7 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
             </div>
             <div>
               <h1 className="text-base font-black tracking-tight text-white">PRO-GESTIÓN</h1>
-              <p className="text-[9px] font-bold text-white/40 uppercase tracking-[0.25em]">Plataforma Interna</p>
+              <p className="text-[9px] font-bold text-white/40 uppercase tracking-[0.25em]">{t('layout.platformLabel')}</p>
             </div>
           </div>
           <button onClick={onOpenCmd} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition text-white/50 hover:text-white text-xs">
@@ -99,7 +99,8 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
           {can('viewKPIs') && <NavItem to="/dashboard" icon={<LayoutDashboard className="w-4 h-4" />}>{t('nav.dashboard')}</NavItem>}
           <NavItem to="/team" icon={<Users className="w-4 h-4" />}>{t('nav.team')}</NavItem>
           <NavItem to="/projects" icon={<FolderKanban className="w-4 h-4" />}>{t('nav.projects')}</NavItem>
-          {can('manageClients') && <NavItem to="/clients" icon={<Briefcase className="w-4 h-4" />}>Clientes</NavItem>}
+          {can('manageClients') && <NavItem to="/clients" icon={<Briefcase className="w-4 h-4" />}>{t('nav.clients')}</NavItem>}
+          {(can('manageTeams') || can('manageOwnTeam')) && <NavItem to="/teams" icon={<Users2 className="w-4 h-4" />}>{t('nav.teams')}</NavItem>}
           {can('manageUsers') && <NavItem to="/admin" icon={<ShieldCheck className="w-4 h-4" />}>{t('nav.admin')}</NavItem>}
           <NavItem to="/settings" icon={<SettingsIcon className="w-4 h-4" />}>{t('nav.settings')}</NavItem>
 

@@ -25,12 +25,26 @@ export default function Dashboard() {
   const { can, profile } = useAuth();
   const { t, lang } = useT();
   const [filter, setFilter] = useState('');
+  const [sortBy, setSortBy] = useState('title');
+  const [sortDir, setSortDir] = useState('asc');
   const navigate = useNavigate();
   const ref = useRef(null);
 
+  const toggleSort = (k) => {
+    if (sortBy === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(k); setSortDir('asc'); }
+  };
+
   const visible = useMemo(() => {
     if (can('viewAll')) return projects;
-    return projects.filter(p => p.owner_id === profile?.id || (p.member_ids || []).includes(profile?.id));
+    const myId = profile?.id;
+    const myTeam = profile?.team_id || null;
+    const canTeam = can('viewTeamProjects');
+    return projects.filter(p =>
+      p.owner_id === myId ||
+      (p.member_ids || []).includes(myId) ||
+      (canTeam && myTeam && p.team_id === myTeam)
+    );
   }, [projects, profile, can]);
 
   const profileMap = useMemo(() => new Map(profiles.map(u => [u.id, u])), [profiles]);
@@ -81,10 +95,26 @@ export default function Dashboard() {
   }, [total, active, finished, avg, filter]);
 
   const filtered = useMemo(() => {
-    if (!filter) return visible;
-    const q = filter.toLowerCase();
-    return visible.filter(p => p.title.toLowerCase().includes(q) || (p.company || '').toLowerCase().includes(q));
-  }, [visible, filter]);
+    let list = visible;
+    if (filter) {
+      const q = filter.toLowerCase();
+      list = list.filter(p => p.title.toLowerCase().includes(q) || (p.company || '').toLowerCase().includes(q));
+    }
+    return [...list].sort((a, b) => {
+      let av, bv;
+      switch (sortBy) {
+        case 'title':    av = a.title || '';                                            bv = b.title || ''; break;
+        case 'category': av = categoryMap.get(a.category_id)?.name || '';               bv = categoryMap.get(b.category_id)?.name || ''; break;
+        case 'owner':    av = profileMap.get(a.owner_id)?.name || a.owner_label || ''; bv = profileMap.get(b.owner_id)?.name || b.owner_label || ''; break;
+        case 'status':   av = a.status || '';                                           bv = b.status || ''; break;
+        case 'progress': av = calcProjectProgress(a);                                   bv = calcProjectProgress(b); break;
+        default:         av = a[sortBy] || '';                                          bv = b[sortBy] || '';
+      }
+      if (typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av;
+      const cmp = av.toString().localeCompare(bv.toString(), 'es', { numeric: true });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [visible, filter, sortBy, sortDir, categoryMap, profileMap]);
 
   const donutData = useMemo(() => {
     const counts = STATUSES.map(s => visible.filter(p => p.status === s.name).length);
@@ -288,7 +318,11 @@ export default function Dashboard() {
               <table className="w-full text-left">
                 <thead className="bg-ink-50/60 border-b">
                   <tr>
-                    <Th>{t('dash.col.project')}</Th><Th>{t('dash.col.category')}</Th><Th>{t('dash.col.owner')}</Th><Th>{t('dash.col.status')}</Th><Th>{t('dash.col.progress')}</Th>
+                    <Th k="title" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>{t('dash.col.project')}</Th>
+                    <Th k="category" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>{t('dash.col.category')}</Th>
+                    <Th k="owner" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>{t('dash.col.owner')}</Th>
+                    <Th k="status" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>{t('dash.col.status')}</Th>
+                    <Th k="progress" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>{t('dash.col.progress')}</Th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ink-100">
@@ -376,8 +410,24 @@ function KPI({ label, target, icon, iconBg, valueClass }) {
     </div>
   );
 }
-function Th({ children }) {
-  return <th className="px-6 py-3 text-[10px] font-black text-ink-400 uppercase tracking-[0.2em]">{children}</th>;
+function Th({ children, k, sortBy, sortDir, onSort }) {
+  // Sin `k` → header decorativo no clickable (compatibilidad con tabla de vencidos).
+  if (!k || !onSort) {
+    return <th className="px-6 py-3 text-[10px] font-black text-ink-400 uppercase tracking-[0.2em]">{children}</th>;
+  }
+  const active = sortBy === k;
+  const arrow = active ? (sortDir === 'asc' ? '↑' : '↓') : '↕';
+  return (
+    <th
+      onClick={() => onSort(k)}
+      className={`px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] cursor-pointer select-none transition hover:text-ink-700 ${active ? 'text-violet-600' : 'text-ink-400'}`}
+    >
+      <span className="inline-flex items-center gap-1.5">
+        {children}
+        <span className={`text-[11px] leading-none ${active ? 'text-violet-600 font-black' : 'text-ink-300'}`} aria-hidden>{arrow}</span>
+      </span>
+    </th>
+  );
 }
 
 function RiskCard({ label, count, color }) {

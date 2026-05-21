@@ -6,15 +6,17 @@ import { fetchComments, createComment, deleteComment } from '../lib/comments';
 import { reduced } from '../lib/motion';
 import { useToast } from '../lib/toast';
 import { askConfirm } from '../lib/confirm.jsx';
+import { useT } from '../lib/i18n.jsx';
 import { logger } from '../lib/logger';
 import Avatar from './Avatar.jsx';
 
+// value '' = comentario sin etiqueta. labelKey resuelve vía t() en runtime.
 const TAG_OPTIONS = [
-  { value: '', label: 'Comentario' },
-  { value: 'avance', label: 'Avance', cls: 'text-emerald-700' },
-  { value: 'riesgo', label: 'Riesgo', cls: 'text-red-700' },
-  { value: 'decision', label: 'Decisión', cls: 'text-violet-700' },
-  { value: 'bloqueo', label: 'Bloqueo', cls: 'text-amber-700' },
+  { value: '', labelKey: 'comments.tag.comment' },
+  { value: 'avance', labelKey: 'comments.tag.avance', cls: 'text-emerald-700' },
+  { value: 'riesgo', labelKey: 'comments.tag.riesgo', cls: 'text-red-700' },
+  { value: 'decision', labelKey: 'comments.tag.decision', cls: 'text-violet-700' },
+  { value: 'bloqueo', labelKey: 'comments.tag.bloqueo', cls: 'text-amber-700' },
 ];
 
 const TAG_BADGE_CLS = {
@@ -27,6 +29,7 @@ const TAG_BADGE_CLS = {
 export default function Comments({ projectId }) {
   const { profile } = useAuth();
   const showToast = useToast(s => s.show);
+  const { t, lang } = useT();
   const [comments, setComments] = useState([]);
   const [body, setBody] = useState('');
   const [tag, setTag] = useState('');
@@ -35,7 +38,7 @@ export default function Comments({ projectId }) {
 
   const load = async () => {
     try { setComments(await fetchComments(projectId)); }
-    catch (e) { logger.error(e); showToast('No se pudieron cargar los comentarios: ' + e.message, 'error'); }
+    catch (e) { logger.error(e); showToast(t('comments.loadError') + e.message, 'error'); }
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -52,45 +55,46 @@ export default function Comments({ projectId }) {
     e?.preventDefault();
     const txt = body.trim();
     if (!txt) return;
-    if (txt.length > 4000) { showToast('Comentario demasiado largo (máx 4000)', 'error'); return; }
+    if (txt.length > 4000) { showToast(t('comments.tooLong'), 'error'); return; }
     setBusy(true);
     try {
       const c = await createComment(projectId, profile.id, txt, tag || null);
       setComments(prev => [c, ...prev]);
       setBody('');
       setTag('');
-    } catch (ex) { showToast('Error: ' + ex.message, 'error'); }
+    } catch (ex) { showToast(t('common.errorPrefix') + ex.message, 'error'); }
     finally { setBusy(false); }
   };
 
   const remove = async (id) => {
-    const ok = await askConfirm({ title: 'Eliminar comentario', message: '¿Confirmar eliminación?', danger: true });
+    const ok = await askConfirm({ title: t('comments.deleteTitle'), message: t('comments.deleteMsg'), danger: true });
     if (!ok) return;
     try { await deleteComment(id); setComments(prev => prev.filter(c => c.id !== id)); }
-    catch (e) { showToast('Error: ' + e.message, 'error'); }
+    catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
   };
 
+  const dateLocale = lang === 'en' ? 'en' : lang === 'pt' ? 'pt' : 'es';
   const fmt = (iso) => {
     const d = new Date(iso);
     const diff = (Date.now() - d.getTime()) / 1000;
-    if (diff < 60) return 'ahora';
+    if (diff < 60) return t('activity.now');
     if (diff < 3600) return Math.floor(diff / 60) + 'm';
     if (diff < 86400) return Math.floor(diff / 3600) + 'h';
     if (diff < 604800) return Math.floor(diff / 86400) + 'd';
-    return d.toLocaleDateString('es', { day: '2-digit', month: 'short' });
+    return d.toLocaleDateString(dateLocale, { day: '2-digit', month: 'short' });
   };
 
   return (
     <div className="card-light p-7" data-stagger>
       <h3 className="text-[10px] font-black text-ink-400 uppercase tracking-widest mb-5 flex items-center gap-2">
-        <MessageCircle className="w-3.5 h-3.5" /> Bitácora · {comments.length}
+        <MessageCircle className="w-3.5 h-3.5" /> {t('comments.title')} · {comments.length}
       </h3>
 
       <form onSubmit={send} className="flex items-start gap-3 mb-5">
         <Avatar user={profile} size={36} />
         <div className="flex-1 space-y-2">
           <div className="flex gap-2">
-            <textarea value={body} onChange={e => setBody(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(e); }} placeholder="Comentario, decisión, observación..." className="input-light flex-1 resize-none h-12 leading-tight pt-3" />
+            <textarea value={body} onChange={e => setBody(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(e); }} placeholder={t('comments.placeholder')} className="input-light flex-1 resize-none h-12 leading-tight pt-3" />
             <button type="submit" disabled={busy || !body.trim()} className="btn-primary disabled:opacity-50 self-start"><Send className="w-3.5 h-3.5" /></button>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -101,7 +105,7 @@ export default function Comments({ projectId }) {
                 onClick={() => setTag(opt.value)}
                 className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full border transition ${tag === opt.value ? 'bg-ink-900 text-white border-ink-900' : `bg-white ${opt.cls || 'text-ink-500'} border-ink-200 hover:border-ink-400`}`}
               >
-                {opt.label}
+                {t(opt.labelKey)}
               </button>
             ))}
           </div>
@@ -109,7 +113,7 @@ export default function Comments({ projectId }) {
       </form>
 
       <div ref={listRef} className="space-y-3">
-        {comments.length === 0 && <p className="text-xs text-ink-400 italic text-center py-6">Sin comentarios. Sé el primero.</p>}
+        {comments.length === 0 && <p className="text-xs text-ink-400 italic text-center py-6">{t('comments.empty')}</p>}
         {comments.map(c => (
           <div key={c.id} data-c className="flex items-start gap-3 group">
             <Avatar user={c.profile} size={32} />
@@ -129,7 +133,7 @@ export default function Comments({ projectId }) {
                 <p className="text-[12px] leading-relaxed whitespace-pre-wrap">{c.body}</p>
               </div>
             </div>
-            {(c.profile_id === profile.id || profile.role === 'admin') && (
+            {(c.profile_id === profile.id || profile.role === 'admin' || profile.role === 'super_admin') && (
               <button onClick={() => remove(c.id)} className="text-ink-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition mt-2">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>

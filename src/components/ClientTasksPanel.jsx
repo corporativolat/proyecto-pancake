@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ListTodo, Plus, Download, Check, XCircle, MessageSquare, Trash2, Clock, AlertTriangle } from 'lucide-react';
+import { ListTodo, Plus, Download, Check, XCircle, MessageSquare, Trash2, Clock, AlertTriangle, Link as LinkIcon, FileUp } from 'lucide-react';
 import gsap from 'gsap';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../lib/auth.jsx';
 import { useToast } from '../lib/toast';
 import { askConfirm } from '../lib/confirm.jsx';
 import { reduced } from '../lib/motion';
@@ -9,7 +10,8 @@ import Modal from './Modal.jsx';
 import {
   listClientTasks, createClientTask, deleteClientTask,
   reviewClientTask, signedUrlForTaskFile,
-  priorityMeta, statusMeta, dueRelative
+  priorityMeta, statusMeta, dueRelative,
+  CLIENT_TASK_TYPES, TASK_TYPE_LABEL, TASK_TYPE_HELP, looksLikeUrl
 } from '../lib/clientTasks';
 
 const FILTERS = [
@@ -22,6 +24,7 @@ const FILTERS = [
 ];
 
 export default function ClientTasksPanel({ project }) {
+  const { profile, can } = useAuth();
   const showToast = useToast(s => s.show);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +32,14 @@ export default function ClientTasksPanel({ project }) {
   const [showNew, setShowNew] = useState(false);
   const [rejecting, setRejecting] = useState(null);
   const rootRef = useRef(null);
+
+  // Solo admin/gerente/owner/created_by puede borrar tareas (espejo de
+  // client_tasks_delete en mig-24).
+  const canDelete = !!profile && (
+    can('editAll') ||
+    project.owner_id === profile.id ||
+    project.created_by === profile.id
+  );
 
   const load = async () => {
     setLoading(true);
@@ -71,15 +82,22 @@ export default function ClientTasksPanel({ project }) {
   const approve = async (t) => {
     const ok = await askConfirm({ title: 'Aprobar entrega', message: `Aprobar la tarea "${t.title}". El cliente recibirá una notificación.` });
     if (!ok) return;
-    try { await reviewClientTask({ id: t.id, approved: true }); showToast('Tarea aprobada', 'success'); }
-    catch (e) { showToast('Error: ' + e.message, 'error'); }
+    try {
+      await reviewClientTask({ id: t.id, approved: true });
+      showToast('Tarea aprobada', 'success');
+      // No esperar al realtime: refrescar directamente para feedback inmediato.
+      load();
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
   };
 
   const removeTask = async (t) => {
     const ok = await askConfirm({ title: 'Eliminar tarea', message: `Eliminar "${t.title}". No se podrá deshacer.`, danger: true });
     if (!ok) return;
-    try { await deleteClientTask(t.id); showToast('Tarea eliminada', 'success'); }
-    catch (e) { showToast('Error: ' + e.message, 'error'); }
+    try {
+      await deleteClientTask(t.id);
+      showToast('Tarea eliminada', 'success');
+      load();
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
   };
 
   if (!project.client_id) {
@@ -152,6 +170,12 @@ export default function ClientTasksPanel({ project }) {
             const pm = priorityMeta(t.priority);
             const sm = statusMeta(t.status);
             const due = dueRelative(t.due_date);
+            const type = t.task_type || 'file';
+            const isText = type === 'text';
+            const TypeIcon = isText ? LinkIcon : FileUp;
+            const typeCls = isText
+              ? 'bg-sky-50 text-sky-700 border-sky-200'
+              : 'bg-ink-50 text-ink-600 border-ink-200';
             return (
               <li key={t.id} data-fade-task className="px-5 py-4 hover:bg-ink-50 transition">
                 <div className="flex items-start gap-4 flex-wrap">
@@ -162,6 +186,9 @@ export default function ClientTasksPanel({ project }) {
                     <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
                       <span className="truncate">{t.title}</span>
                       <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${pm.cls}`}>{pm.label}</span>
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border inline-flex items-center gap-1 ${typeCls}`}>
+                        <TypeIcon className="w-2.5 h-2.5" /> {TASK_TYPE_LABEL[type] || type}
+                      </span>
                     </div>
                     {t.description && <p className="text-[12px] text-ink-500 mt-1 leading-relaxed">{t.description}</p>}
                     <div className="flex items-center gap-3 mt-1.5 flex-wrap">
@@ -176,6 +203,22 @@ export default function ClientTasksPanel({ project }) {
                         <span className="text-[10px] text-ink-400 font-mono">entregado {new Date(t.delivered_at).toLocaleDateString()}</span>
                       )}
                     </div>
+                    {isText && t.response_text && (
+                      <div className="mt-2 bg-sky-50/60 border border-sky-200 rounded-lg px-3 py-2">
+                        <div className="text-[9px] font-black uppercase tracking-widest text-sky-700 mb-1 flex items-center gap-1">
+                          <LinkIcon className="w-2.5 h-2.5" /> Respuesta del cliente
+                        </div>
+                        {looksLikeUrl(t.response_text) ? (
+                          <a href={t.response_text.startsWith('http') ? t.response_text : `https://${t.response_text}`}
+                             target="_blank" rel="noopener noreferrer"
+                             className="text-[12px] font-bold text-sky-700 underline break-all hover:text-sky-800">
+                            {t.response_text}
+                          </a>
+                        ) : (
+                          <p className="text-[12px] text-sky-900 whitespace-pre-wrap break-words">{t.response_text}</p>
+                        )}
+                      </div>
+                    )}
                     {t.review_comment && (
                       <div className="mt-2 bg-red-50/60 border border-red-200 rounded-lg px-3 py-2">
                         <div className="text-[9px] font-black uppercase tracking-widest text-red-700 mb-0.5 flex items-center gap-1">
@@ -186,7 +229,7 @@ export default function ClientTasksPanel({ project }) {
                     )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-                    {t.file_path && (
+                    {!isText && t.file_path && (
                       <button onClick={() => download(t)} className="btn-soft text-xs" title="Descargar archivo">
                         <Download className="w-3 h-3" /> Ver
                       </button>
@@ -201,7 +244,7 @@ export default function ClientTasksPanel({ project }) {
                         </button>
                       </>
                     )}
-                    {(t.status === 'pendiente' || t.status === 'rechazado') && (
+                    {canDelete && (t.status === 'pendiente' || t.status === 'rechazado') && (
                       <button onClick={() => removeTask(t)} className="btn-soft text-xs" title="Eliminar">
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -218,7 +261,7 @@ export default function ClientTasksPanel({ project }) {
         <NewClientTaskModal
           project={project}
           onClose={() => setShowNew(false)}
-          onDone={() => { setShowNew(false); showToast('Tarea creada — el cliente fue notificado', 'success'); }}
+          onDone={() => { setShowNew(false); showToast('Tarea creada — el cliente fue notificado', 'success'); load(); }}
         />
       )}
 
@@ -226,7 +269,7 @@ export default function ClientTasksPanel({ project }) {
         <RejectModal
           task={rejecting}
           onClose={() => setRejecting(null)}
-          onDone={() => { setRejecting(null); showToast('Tarea rechazada', 'success'); }}
+          onDone={() => { setRejecting(null); showToast('Tarea rechazada', 'success'); load(); }}
         />
       )}
     </section>
@@ -240,6 +283,7 @@ function NewClientTaskModal({ project, onClose, onDone }) {
   const [priority, setPriority] = useState('media');
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState('');
+  const [taskType, setTaskType] = useState('file');
   const [busy, setBusy] = useState(false);
 
   const submit = async (e) => {
@@ -256,7 +300,8 @@ function NewClientTaskModal({ project, onClose, onDone }) {
         description: description.trim(),
         priority,
         start_date: startDate || null,
-        due_date: dueDate || null
+        due_date: dueDate || null,
+        task_type: taskType
       });
       onDone();
     } catch (e) { showToast('Error: ' + e.message, 'error'); }
@@ -267,16 +312,48 @@ function NewClientTaskModal({ project, onClose, onDone }) {
     <Modal title="Nueva tarea para el cliente" onClose={onClose} footer={<></>} maxWidth="max-w-2xl">
       <form onSubmit={submit} className="space-y-4">
         <div>
+          <label className="text-[10px] font-bold uppercase tracking-widest text-ink-500 mb-1 block">Tipo de entrega</label>
+          <div className="grid grid-cols-2 gap-2">
+            {CLIENT_TASK_TYPES.map(tp => {
+              const active = taskType === tp;
+              const Icon = tp === 'text' ? LinkIcon : FileUp;
+              return (
+                <button
+                  key={tp}
+                  type="button"
+                  onClick={() => setTaskType(tp)}
+                  className={`text-left rounded-xl border px-3 py-2.5 transition ${active
+                    ? 'border-violet-500 bg-violet-50/70 shadow-sm'
+                    : 'border-ink-200 hover:border-ink-300 bg-white'}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Icon className={`w-4 h-4 ${active ? 'text-violet-600' : 'text-ink-500'}`} />
+                    <span className={`text-xs font-black ${active ? 'text-violet-700' : 'text-ink-700'}`}>
+                      {TASK_TYPE_LABEL[tp]}
+                    </span>
+                  </div>
+                  <p className="text-[10.5px] text-ink-500 leading-snug">{TASK_TYPE_HELP[tp]}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
           <label className="text-[10px] font-bold uppercase tracking-widest text-ink-500 mb-1 block">Título *</label>
           <input value={title} onChange={e => setTitle(e.target.value)} autoFocus
-            placeholder="Ej: Enviar cédula del representante legal"
+            placeholder={taskType === 'text'
+              ? 'Ej: Compártenos el enlace de Drive con tus fotos del local'
+              : 'Ej: Enviar cédula del representante legal'}
             className="input-light w-full" />
         </div>
 
         <div>
           <label className="text-[10px] font-bold uppercase tracking-widest text-ink-500 mb-1 block">¿Por qué la necesitas?</label>
           <textarea value={description} onChange={e => setDescription(e.target.value)}
-            placeholder="Ej: Necesitamos validar la identidad antes de firmar el contrato. PDF escaneado, ambas caras."
+            placeholder={taskType === 'text'
+              ? 'Ej: Sube las fotos a una carpeta de Drive y compártela con permisos de lectura. Pega aquí el enlace.'
+              : 'Ej: Necesitamos validar la identidad antes de firmar el contrato. PDF escaneado, ambas caras.'}
             className="input-light h-24 resize-none w-full" />
         </div>
 
@@ -300,7 +377,9 @@ function NewClientTaskModal({ project, onClose, onDone }) {
         </div>
 
         <div className="bg-violet-50/60 border border-violet-200 rounded-xl px-4 py-3 text-[11px] text-violet-900">
-          <strong className="font-black">El cliente recibirá:</strong> una notificación en el portal con el título, la descripción, la prioridad y la fecha de entrega. Verá la tarea también en su calendario y podrá subir el archivo desde allí.
+          <strong className="font-black">El cliente recibirá:</strong> una notificación en el portal con el título, la descripción, la prioridad y la fecha de entrega. {taskType === 'text'
+            ? 'Para responder pegará un enlace o un texto desde el portal.'
+            : 'Verá la tarea también en su calendario y podrá subir el archivo desde allí.'}
         </div>
 
         <div className="flex gap-2 pt-1">

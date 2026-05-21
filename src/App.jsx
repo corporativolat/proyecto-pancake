@@ -22,6 +22,7 @@ const Admin = lazy(() => import('./pages/Admin.jsx'));
 const AdminReports = lazy(() => import('./pages/AdminReports.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const Clients = lazy(() => import('./pages/Clients.jsx'));
+const Teams = lazy(() => import('./pages/Teams.jsx'));
 
 // Portal cliente (lazy)
 const PortalLogin   = lazy(() => import('./pages/portal/PortalLogin.jsx'));
@@ -51,6 +52,8 @@ export default function App() {
   const { session, profile, loading, can, isClient, isStaff } = useAuth();
   const refreshAll = useStore(s => s.refreshAll);
   const refreshProjects = useStore(s => s.refreshProjects);
+  const refreshTeams = useStore(s => s.refreshTeams);
+  const refreshProfiles = useStore(s => s.refreshProfiles);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [shortOpen, setShortOpen] = useState(false);
   const location = useLocation();
@@ -72,33 +75,40 @@ export default function App() {
   // de formularios/modales mientras el usuario escribe.
   useEffect(() => {
     if (!session || isClient) return;
-    let timer = null;
-    let pending = false;
-    const fire = () => { pending = false; refreshProjects(); };
-    const trigger = () => {
-      if (document.hidden) { pending = true; return; }
-      clearTimeout(timer);
-      timer = setTimeout(fire, 350);
+    let projTimer = null;
+    let teamTimer = null;
+    let projPending = false;
+    let teamPending = false;
+    const fireProj = () => { projPending = false; refreshProjects(); };
+    const fireTeam = () => { teamPending = false; refreshTeams(); refreshProfiles(); };
+    const triggerProj = () => {
+      if (document.hidden) { projPending = true; return; }
+      clearTimeout(projTimer); projTimer = setTimeout(fireProj, 350);
+    };
+    const triggerTeam = () => {
+      if (document.hidden) { teamPending = true; return; }
+      clearTimeout(teamTimer); teamTimer = setTimeout(fireTeam, 350);
     };
     const onVisible = () => {
-      if (!document.hidden && pending) {
-        clearTimeout(timer);
-        timer = setTimeout(fire, 350);
-      }
+      if (document.hidden) return;
+      if (projPending) { clearTimeout(projTimer); projTimer = setTimeout(fireProj, 350); }
+      if (teamPending) { clearTimeout(teamTimer); teamTimer = setTimeout(fireTeam, 350); }
     };
     document.addEventListener('visibilitychange', onVisible);
     const ch = supabase.channel(`pro_gestion_changes_${Math.random().toString(36).slice(2)}`)
-      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'projects' }, trigger)
-      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'phases' }, trigger)
-      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'tasks' }, trigger)
-      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'milestones' }, trigger)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'projects' }, triggerProj)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'phases' }, triggerProj)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'tasks' }, triggerProj)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'milestones' }, triggerProj)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'teams' }, triggerTeam)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'invitations' }, triggerTeam)
       .subscribe();
     return () => {
-      clearTimeout(timer);
+      clearTimeout(projTimer); clearTimeout(teamTimer);
       document.removeEventListener('visibilitychange', onVisible);
       supabase.removeChannel(ch);
     };
-  }, [session, refreshProjects, isClient]);
+  }, [session, refreshProjects, refreshTeams, refreshProfiles, isClient]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -190,6 +200,7 @@ export default function App() {
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:id" element={<ProjectDetail />} />
               {can('manageClients') && <Route path="/clients" element={<Clients />} />}
+              {(can('manageTeams') || can('manageOwnTeam')) && <Route path="/teams" element={<Teams />} />}
               {can('manageUsers') && <Route path="/admin" element={<Admin />} />}
               {can('manageUsers') && <Route path="/admin/reports" element={<AdminReports />} />}
               <Route path="/settings" element={<Settings />} />

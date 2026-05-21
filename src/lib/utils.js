@@ -57,6 +57,27 @@ export function clampSpanToProject({ start_week, start_day, duration }, maxDayIn
   if (idx + dur - 1 > maxDayIndex) dur = Math.max(1, maxDayIndex - idx + 1);
   return { start_week: sw, start_day: sd, duration: dur };
 }
+
+// Ajusta una tarea para que quede DENTRO de su fase padre (intersectado con
+// el plazo del proyecto). Las actividades pertenecen a la fase: nunca deben
+// caer fuera de ella ni por la izquierda ni por la derecha.
+//   - phase: { start_week, start_day, duration_days?, duration_weeks }
+//   - maxDayIndex: límite del plazo del proyecto (0-based)
+export function clampSpanToPhase({ start_week, start_day, duration }, phase, maxDayIndex) {
+  const phaseStart = ((phase.start_week - 1) * 7) + ((phase.start_day || 1) - 1);
+  const phaseDur   = phase.duration_days != null ? phase.duration_days : (phase.duration_weeks || 1) * 7;
+  const phaseEnd   = phaseStart + phaseDur; // exclusivo
+  // Primero clamp al proyecto.
+  const p = clampSpanToProject({ start_week, start_day, duration }, maxDayIndex);
+  let idx = dayIndexOf(p.start_week, p.start_day);
+  let dur = p.duration;
+  // La duración no puede exceder el ancho de la fase.
+  dur = Math.max(1, Math.min(dur, phaseDur));
+  // Encaja el inicio dentro de [phaseStart, phaseEnd - dur].
+  idx = Math.max(phaseStart, Math.min(phaseEnd - dur, idx));
+  const wd = weekDayFromIndex(idx);
+  return { start_week: wd.week, start_day: wd.day, duration: dur };
+}
 export const calcProjectProgress = (project) => {
   const totalTasks = (project?.phases || []).reduce((a, ph) => a + (ph.tasks?.length || 0), 0);
   if (totalTasks === 0) {

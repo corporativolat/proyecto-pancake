@@ -1,14 +1,17 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CheckCheck, FolderKanban, FileText, MessageCircle, Flag, AlertCircle, Inbox } from 'lucide-react';
+import { Bell, CheckCheck, FolderKanban, FileText, MessageCircle, Flag, AlertCircle, Inbox, Users2, ClipboardList, ListChecks, Clock } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
+import { useT } from '../lib/i18n.jsx';
 import { fetchNotifications, markRead, markAllRead, subscribeNotifications } from '../lib/notifications';
 import { logger } from '../lib/logger';
+import AcceptInviteModal from './AcceptInviteModal.jsx';
 
 // Bell con dropdown + realtime. variant: 'dark' (sidebar staff) | 'light' (portal).
 export default function NotifBell({ variant = 'dark' }) {
   const { profile } = useAuth();
+  const { t } = useT();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
@@ -17,6 +20,7 @@ export default function NotifBell({ variant = 'dark' }) {
   // Position offscreen until useLayoutEffect calcula coords reales —
   // evita flash de dropdown sin posicionar.
   const [dropStyle, setDropStyle] = useState({ position: 'fixed', top: '-9999px', left: '-9999px', zIndex: 50 });
+  const [inviteNotif, setInviteNotif] = useState(null);
   const dropRef = useRef(null);
   const btnRef = useRef(null);
 
@@ -105,6 +109,12 @@ export default function NotifBell({ variant = 'dark' }) {
         setItems(prev => prev.map(x => x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x));
       } catch (e) { logger.error('markRead:', e); }
     }
+    // Invitación a equipo → modal de aceptar/rechazar; no navegamos.
+    if (n.kind === 'team_invitation' && n.meta?.token) {
+      setOpen(false);
+      setInviteNotif(n);
+      return;
+    }
     setOpen(false);
     if (n.link) navigate(n.link);
   };
@@ -137,6 +147,17 @@ export default function NotifBell({ variant = 'dark' }) {
           </span>
         )}
       </button>
+
+      {inviteNotif && (
+        <AcceptInviteModal
+          notification={inviteNotif}
+          onClose={() => setInviteNotif(null)}
+          onDone={() => {
+            // Quitar la notif de la lista local para no rebotar.
+            setItems(prev => prev.filter(x => x.id !== inviteNotif.id));
+          }}
+        />
+      )}
 
       {open && createPortal(
         <>
@@ -173,21 +194,23 @@ export default function NotifBell({ variant = 'dark' }) {
                   <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center">
                     <AlertCircle className="w-6 h-6" />
                   </div>
-                  <h4 className="font-black text-sm mb-1 text-red-700">No se pudieron cargar</h4>
+                  <h4 className="font-black text-sm mb-1 text-red-700">{t('notif.errorLoad')}</h4>
                   <p className="text-[11px] text-ink-500 leading-snug">{loadError}</p>
-                  <button onClick={load} className="mt-3 text-[10px] font-bold text-emerald-700 hover:underline">Reintentar</button>
+                  <button onClick={load} className="mt-3 text-[10px] font-bold text-emerald-700 hover:underline">{t('notif.retry')}</button>
                 </div>
               ) : items.length === 0 ? (
                 <div className="px-6 py-10 text-center">
                   <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center">
                     <Inbox className="w-7 h-7 text-emerald-600" />
                   </div>
-                  <h4 className="font-black text-sm mb-1 text-ink-700">Todo al día</h4>
-                  <p className="text-[11px] text-ink-500">Te avisaremos aquí cuando haya novedad.</p>
+                  <h4 className="font-black text-sm mb-1 text-ink-700">{t('notif.allClear')}</h4>
+                  <p className="text-[11px] text-ink-500">{t('notif.allClearBody')}</p>
                 </div>
               ) : (
                 <ul>
-                  {items.map(n => <NotifItem key={n.id} n={n} onClick={() => onClickItem(n)} />)}
+                  {items.map(n => (
+                    <NotifItem key={n.id} n={n} onClick={() => onClickItem(n)} />
+                  ))}
                 </ul>
               )}
             </div>
@@ -200,12 +223,26 @@ export default function NotifBell({ variant = 'dark' }) {
 }
 
 const KIND_ICON = {
-  project_status:    { Icon: FolderKanban, color: 'violet' },
-  doc_uploaded:      { Icon: FileText, color: 'amber' },
-  doc_reviewed:      { Icon: FileText, color: 'amber' },
-  comment:           { Icon: MessageCircle, color: 'blue' },
-  milestone:         { Icon: Flag, color: 'emerald' },
-  alert:             { Icon: AlertCircle, color: 'red' }
+  project_status:             { Icon: FolderKanban, color: 'violet' },
+  doc_uploaded:               { Icon: FileText, color: 'amber' },
+  doc_reviewed:               { Icon: FileText, color: 'amber' },
+  comment:                    { Icon: MessageCircle, color: 'blue' },
+  milestone:                  { Icon: Flag, color: 'emerald' },
+  alert:                      { Icon: AlertCircle, color: 'red' },
+  team_invitation:            { Icon: Users2, color: 'violet' },
+  team_invitation_accepted:   { Icon: Users2, color: 'emerald' },
+  team_invitation_declined:   { Icon: Users2, color: 'red' },
+  // Cuestionarios (mig-29).
+  questionnaire_assigned:     { Icon: ClipboardList, color: 'violet' },
+  questionnaire_submitted:    { Icon: ClipboardList, color: 'blue' },
+  questionnaire_reviewed:     { Icon: ClipboardList, color: 'emerald' },
+  // Tareas asignadas al cliente (mig-24/28).
+  client_task_assigned:       { Icon: ListChecks, color: 'blue' },
+  client_task_delivered:      { Icon: ListChecks, color: 'violet' },
+  client_task_reviewed:       { Icon: ListChecks, color: 'emerald' },
+  client_task_due_soon:       { Icon: Clock, color: 'amber' },
+  client_task_overdue:        { Icon: AlertCircle, color: 'red' },
+  client_task_overdue_staff:  { Icon: AlertCircle, color: 'red' }
 };
 
 const COLOR_CLS = {

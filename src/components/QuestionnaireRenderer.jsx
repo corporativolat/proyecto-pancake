@@ -1,33 +1,33 @@
 import { useMemo } from 'react';
 import { CheckCircle2 } from 'lucide-react';
-import { intakeProgress } from '../lib/intakeSchemas.js';
+import RichTextView from './RichTextView.jsx';
+import { questionnaireProgress } from '../lib/questionnaires';
 
-// Render genérico del cuestionario de intake.
+// Renderiza un cuestionario para LLENAR (cliente) o VER (staff).
 //
 // Props:
-//   schema      -> objeto retornado por getIntakeSchema(business_type)
-//   answers     -> { [questionKey]: string | string[] }
+//   body        -> { sections: [{ title, description_html, questions: [...] }] }
+//   answers     -> { [key]: string | string[] }
 //   onChange    -> (key, value) => void   (ignorado si readOnly)
-//   readOnly    -> bool: si true, muestra los inputs deshabilitados
-//   showProgress-> bool: si true, muestra barra de avance arriba
-//   accent      -> 'violet' | 'emerald' (color de acento)
+//   readOnly    -> bool
+//   showProgress-> bool
+//   accent      -> 'violet' | 'emerald'
 //
-// IMPORTANTE: el componente no llama a Supabase. Es responsabilidad
-// del padre persistir `answers` con saveIntakeAnswers().
-export default function IntakeForm({
-  schema,
+// El renderer respeta el HTML rich-text en `label_html` y `help_html` vía RichTextView.
+export default function QuestionnaireRenderer({
+  body,
   answers,
   onChange,
   readOnly = false,
   showProgress = true,
   accent = 'violet'
 }) {
-  const progress = useMemo(() => intakeProgress(schema, answers), [schema, answers]);
+  const progress = useMemo(() => questionnaireProgress(body, answers), [body, answers]);
 
-  if (!schema) {
+  if (!body || !Array.isArray(body.sections) || body.sections.length === 0) {
     return (
       <div className="rounded-2xl border border-ink-200 bg-ink-50 px-5 py-6 text-center text-sm text-ink-500">
-        Selecciona un tipo de negocio para ver el cuestionario.
+        Este cuestionario no tiene preguntas.
       </div>
     );
   }
@@ -40,12 +40,6 @@ export default function IntakeForm({
 
   return (
     <div className="space-y-6">
-      {schema.intro && (
-        <p className={`text-[12px] leading-relaxed px-4 py-2.5 rounded-xl border ${accentSoft} ${accentText}`}>
-          {schema.intro}
-        </p>
-      )}
-
       {showProgress && (
         <div className="flex items-center gap-3">
           <span className="text-[10px] font-black uppercase tracking-widest text-ink-500 w-20">Avance</span>
@@ -58,14 +52,24 @@ export default function IntakeForm({
         </div>
       )}
 
-      {schema.sections.map((sec, sIdx) => (
-        <section key={sIdx} className="rounded-2xl border border-ink-100 bg-white shadow-sm overflow-hidden">
+      {body.sections.map((sec, sIdx) => (
+        <section key={sec.id || sIdx} className="rounded-2xl border border-ink-100 bg-white shadow-sm overflow-hidden">
           <header className={`px-5 py-3 border-b ${accentSoft}`}>
-            <h3 className={`text-xs font-black uppercase tracking-widest ${accentText}`}>{sec.title}</h3>
+            <h3 className={`text-xs font-black uppercase tracking-widest ${accentText}`}>{sec.title || `Sección ${sIdx + 1}`}</h3>
+            {sec.description_html && (
+              <RichTextView html={sec.description_html} className="rte-view-compact mt-1 text-[12px] text-ink-600" />
+            )}
           </header>
-          <div className="p-5 space-y-4">
-            {sec.questions.map(q => (
-              <Field key={q.key} q={q} value={answers?.[q.key]} onChange={(v) => set(q.key, v)} readOnly={readOnly} />
+          <div className="p-5 space-y-5">
+            {(sec.questions || []).map(q => (
+              <Field
+                key={q.key}
+                q={q}
+                value={answers?.[q.key]}
+                onChange={(v) => set(q.key, v)}
+                readOnly={readOnly}
+                accent={accent}
+              />
             ))}
           </div>
         </section>
@@ -74,7 +78,7 @@ export default function IntakeForm({
   );
 }
 
-function Field({ q, value, onChange, readOnly }) {
+function Field({ q, value, onChange, readOnly, accent }) {
   const filled = (() => {
     if (value === null || value === undefined) return false;
     if (Array.isArray(value)) return value.length > 0;
@@ -85,20 +89,26 @@ function Field({ q, value, onChange, readOnly }) {
   return (
     <div>
       <div className="flex items-start gap-2 mb-1.5">
-        <label className="flex-1 text-[12px] font-bold text-ink-700 leading-snug">
-          {q.label}
-          {q.required && <span className="text-red-500 ml-1">*</span>}
-        </label>
-        {filled && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />}
+        <div className="flex-1">
+          <RichTextView html={q.label_html} className="rte-view-compact text-ink-800" emptyFallback={
+            <span className="text-[12px] font-bold text-ink-700">(pregunta sin texto)</span>
+          } />
+          {q.required && <span className="text-red-500 ml-1 text-xs">*</span>}
+        </div>
+        {filled && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-1" />}
       </div>
-      {q.help && <p className="text-[11px] text-ink-400 italic mb-2 leading-snug">{q.help}</p>}
-      <Input q={q} value={value} onChange={onChange} readOnly={readOnly} />
+      {q.help_html && (
+        <RichTextView html={q.help_html} className="rte-view-compact mb-2 text-ink-500 italic" />
+      )}
+      <Input q={q} value={value} onChange={onChange} readOnly={readOnly} accent={accent} />
     </div>
   );
 }
 
-function Input({ q, value, onChange, readOnly }) {
+function Input({ q, value, onChange, readOnly, accent }) {
   const baseCls = 'input-light';
+  const accentBtn = accent === 'emerald' ? 'bg-emerald-600 border-emerald-600 hover:border-emerald-400 hover:text-emerald-700' : 'bg-violet-600 border-violet-600 hover:border-violet-400 hover:text-violet-700';
+
   switch (q.type) {
     case 'textarea':
       return (
@@ -106,7 +116,6 @@ function Input({ q, value, onChange, readOnly }) {
           value={value || ''}
           onChange={e => onChange(e.target.value)}
           disabled={readOnly}
-          placeholder={q.placeholder || ''}
           className={`${baseCls} min-h-[80px] resize-y disabled:opacity-80 disabled:bg-ink-50`}
         />
       );
@@ -143,9 +152,9 @@ function Input({ q, value, onChange, readOnly }) {
                 disabled={readOnly}
                 className={`text-[11px] font-bold px-3 py-1.5 rounded-full border transition ${
                   active
-                    ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
-                    : 'bg-white text-ink-600 border-ink-200 hover:border-violet-400 hover:text-violet-700'
-                } disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:border-ink-200`}
+                    ? `${accentBtn} text-white shadow-sm`
+                    : `bg-white text-ink-600 border-ink-200 ${accentBtn.split(' ').filter(c => c.startsWith('hover')).join(' ')}`
+                } disabled:opacity-70 disabled:cursor-not-allowed`}
               >
                 {opt}
               </button>
@@ -168,7 +177,7 @@ function Input({ q, value, onChange, readOnly }) {
                 disabled={readOnly}
                 className={`text-[11px] font-bold px-4 py-1.5 rounded-lg border transition ${
                   active
-                    ? 'bg-violet-600 text-white border-violet-600'
+                    ? `${accentBtn} text-white`
                     : 'bg-white text-ink-600 border-ink-200 hover:border-violet-400'
                 } disabled:opacity-70 disabled:cursor-not-allowed`}
               >
@@ -186,7 +195,6 @@ function Input({ q, value, onChange, readOnly }) {
           value={value || ''}
           onChange={e => onChange(e.target.value)}
           disabled={readOnly}
-          placeholder={q.placeholder || ''}
           className={`${baseCls} disabled:opacity-80 disabled:bg-ink-50`}
         />
       );

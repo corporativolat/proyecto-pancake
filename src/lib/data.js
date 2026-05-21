@@ -177,11 +177,17 @@ export async function deleteMilestoneTemplate(id) {
 export function friendlyDbError(e) {
   const msg = (e?.message || '').toLowerCase();
   const code = e?.code || '';
+  const name = e?.name || '';
   if (code === '42501' || msg.includes('row-level security')) return { key: 'db.error.rls', raw: e?.message };
   if (code === '23505') return { key: 'db.error.duplicate', raw: e?.message };
   if (code === '23503') return { key: 'db.error.fk', raw: e?.message };
   if (code === '23514') return { key: 'db.error.check', raw: e?.message };
   if (code === '23502') return { key: 'db.error.notNull', raw: e?.message };
+  // Errores de Supabase Edge Functions: nombres `FunctionsHttpError`,
+  // `FunctionsRelayError`, `FunctionsFetchError`. No traen `code` Postgres.
+  if (name === 'FunctionsHttpError' || name === 'FunctionsRelayError' || name === 'FunctionsFetchError') {
+    return { key: 'db.error.function', raw: e?.message };
+  }
   if (msg.includes('network') || msg.includes('failed to fetch') || msg.includes('fetch')) return { key: 'db.error.network', raw: e?.message };
   return { key: 'db.error.generic', raw: e?.message };
 }
@@ -233,72 +239,101 @@ export async function applyDocumentTemplate(projectId, triggerStatus = null) {
 // Cuestionario obligatorio que el cliente debe completar antes de
 // arrancar la construcción del bot. Una fila por proyecto.
 // =============================================================
-export async function fetchIntakeForm(projectId) {
+// =============================================================
+// Teams + invitations (mig-27)
+// Modelo: profiles.team_id (1 equipo por persona); teams.manager_id
+// (lider_equipos dueño) y teams.leader_id (lider_equipo, UNIQUE).
+// =============================================================
+
+export async function fetchTeams() {
   const { data, error } = await supabase
-    .from('intake_forms')
+    .from('teams')
     .select('*')
-    .eq('project_id', projectId)
-    .maybeSingle();
+    .order('created_at');
   if (error) throw error;
-  return data; // puede ser null si aún no hay fila
+  return data || [];
 }
 
-// Crea la fila si no existe (red de seguridad — normalmente la crea el
-// trigger ensure_intake_form al setearse projects.business_type).
-export async function ensureIntakeForm(projectId, businessType) {
-  const existing = await fetchIntakeForm(projectId);
-  if (existing) return existing;
-  const { data, error } = await supabase
-    .from('intake_forms')
-    .insert({ project_id: projectId, business_type: businessType, answers: {}, status: 'borrador' })
-    .select()
-    .single();
+export async function createTeam({ name, color = '#7c3aed', manager_id = null, leader_id = null }) {
+  const payload = { name, color };
+  if (manager_id) payload.manager_id = manager_id;
+  if (leader_id) payload.leader_id = leader_id;
+  const { data, error } = await supabase.from('teams').insert(payload).select().single();
   if (error) throw error;
   return data;
 }
 
-// Guarda parcialmente las respuestas del cliente. No cambia status.
-export async function saveIntakeAnswers(intakeId, answers) {
-  const { error } = await supabase
-    .from('intake_forms')
-    .update({ answers })
-    .eq('id', intakeId);
+export async function updateTeam(id, patch) {
+  const { error } = await supabase.from('teams').update(patch).eq('id', id);
   if (error) throw error;
 }
 
-// Cliente envía el cuestionario para revisión del staff.
-export async function submitIntakeForm(intakeId, answers) {
-  const { error } = await supabase
-    .from('intake_forms')
-    .update({ answers, status: 'enviado', submitted_at: new Date().toISOString() })
-    .eq('id', intakeId);
+export async function deleteTeam(id) {
+  const { error } = await supabase.from('teams').delete().eq('id', id);
   if (error) throw error;
 }
 
-// Staff aprueba el cuestionario.
-export async function approveIntakeForm(intakeId, reviewerId, comment = '') {
+// Mover un perfil a un equipo (o sacarlo). Lo usa el manager o un admin.
+export async function setProfileTeam(profileId, teamId) {
   const { error } = await supabase
-    .from('intake_forms')
-    .update({
-      status: 'aprobado',
-      reviewed_by: reviewerId,
-      reviewed_at: new Date().toISOString(),
-      review_comment: comment || ''
-    })
-    .eq('id', intakeId);
+    .from('profiles')
+    .update({ team_id: teamId || null })
+    .eq('id', profileId);
   if (error) throw error;
 }
 
-// Staff rechaza (devuelve al cliente para correcciones).
-export async function rejectIntakeForm(intakeId, reviewerId, comment) {
-  const { error } = await supabase
-    .from('intake_forms')
-    .update({
-      status: 'rechazado',
-      reviewed_by: reviewerId,
-      reviewed_at: new Date().toISOString(),
-      review_comment: comment || ''
-    })
-    .eq('id', intakeId);
+// =============================================================
+// Invitations
+// channel: 'email' | 'whatsapp'. role: 'miembro' | 'lider_equipo'.
+// El backend (edge function invite-user) toma la fila y dispara el envío.
+// =============================================================
+
+export async function fetchInvitations(teamId = null) {
+  let q = supabase.from('invitations').select('*').order('created_at', { ascending: false });
+  if (teamId) q = q.eq('team_id', teamId);
+  const { data, error } = await q;
   if (error) throw error;
+  return data || [];
+}
+
+export async function createInvitation(payload) {
+  // payload: { team_id, channel, email?, phone?, role?, invited_by }
+  const { data, error } = await supabase.from('invitations').insert(payload).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function cancelInvitation(id) {
+  const { error } = await supabase
+    .from('invitations')
+    .update({ status: 'cancelada' })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+// Dispara el envío real llamando a la edge function. Para WhatsApp queda
+// en modo stub hasta que esté la API de Pancake (la función devuelve
+// `pending_api` y la UI muestra el aviso). Si el email/teléfono pertenece
+// a un usuario ya registrado, la edge function detecta el match y skipea
+// el envío externo (la notif in-app la inserta el trigger de mig-30).
+export async function sendInvitation(invitationId) {
+  const { data, error } = await supabase.functions.invoke('invite-user', {
+    body: { invitation_id: invitationId }
+  });
+  if (error) throw error;
+  return data;
+}
+
+// Aceptar / rechazar una invitación desde el bell (mig-30).
+// `token` viaja en notification.meta.token.
+export async function acceptInvitation(token) {
+  const { data, error } = await supabase.rpc('accept_invitation', { p_token: token });
+  if (error) throw error;
+  return data;
+}
+
+export async function declineInvitation(token) {
+  const { data, error } = await supabase.rpc('decline_invitation', { p_token: token });
+  if (error) throw error;
+  return data;
 }
