@@ -239,7 +239,7 @@ function GanttRow({ phase, pIdx, editable, maxDayIndex = 55, onChange, onEditTas
   }, [fLeft, fWidth]);
 
   useEffect(() => {
-    if (!editable || !rectRef.current || reduced) return;
+    if (!editable || !rectRef.current) return;
     const rect = rectRef.current;
 
     const moveDrag = Draggable.create(rect, {
@@ -260,12 +260,9 @@ function GanttRow({ phase, pIdx, editable, maxDayIndex = 55, onChange, onEditTas
         const newDay = Math.min(7, Math.max(1, (dayIndex % 7) + 1));
         gsap.to(rect, { x: 0, left: dayIndex * DAY_PX, duration: 0.3, ease: 'power3.out' });
         if (newWeek === phase.start_week && newDay === startDay) return;
-        // delta en días para acompañar las tareas hijas. Las tareas DEBEN
-        // permanecer dentro de la fase, por eso planTaskUpdates clampea.
         const oldStart = phaseStartDayIdx(phase);
-        const newStart = dayIndex;
-        const delta = newStart - oldStart;
-        const taskPatches = planTaskUpdates(phase.tasks, newStart, durationDays, delta, maxDayIndex);
+        const delta = dayIndex - oldStart;
+        const taskPatches = planTaskUpdates(phase.tasks, dayIndex, durationDays, delta, maxDayIndex);
         try {
           await updatePhase(phase.id, { start_week: newWeek, start_day: newDay });
           if (taskPatches.length) {
@@ -294,8 +291,6 @@ function GanttRow({ phase, pIdx, editable, maxDayIndex = 55, onChange, onEditTas
         gsap.to(rect, { width: days * DAY_PX, duration: 0.3, ease: 'power3.out' });
         if (days === durationDays) return;
         const weeks = Math.max(1, Math.min(8, Math.ceil(days / 7)));
-        // Si la fase se hizo más chica, clampea las tareas para que no se
-        // salgan del nuevo ancho. delta = 0 porque el inicio no cambió.
         const taskPatches = planTaskUpdates(phase.tasks, phaseStartDayIdx(phase), days, 0, maxDayIndex);
         try {
           await updatePhase(phase.id, { duration_days: days, duration_weeks: weeks });
@@ -324,24 +319,17 @@ function GanttRow({ phase, pIdx, editable, maxDayIndex = 55, onChange, onEditTas
         style={{ left: fLeft, width: fWidth, willChange: 'transform' }}
         title={editable ? `${phase.name} · ${t('pj.dragHint')}` : phase.name}
       >
+        <div className="absolute left-3 top-3 text-[10px] font-black text-violet-700/70 uppercase tracking-widest pointer-events-none select-none">
+          {phase.name}
+        </div>
         {editable && (
-          <>
-            <div className="absolute left-3 top-3 text-[10px] font-black text-violet-700/70 uppercase tracking-widest pointer-events-none select-none">
-              {phase.name}
-            </div>
-            <div
-              ref={resizeHandleRef}
-              data-no-pan="resize"
-              className="absolute right-0 top-0 bottom-0 w-2.5 cursor-ew-resize hover:bg-violet-500/30 rounded-r-3xl transition-colors flex items-center justify-center group"
-              title={t('pj.resizeHint')}
-            >
-              <div className="w-0.5 h-8 bg-violet-400/60 group-hover:bg-violet-600 rounded-full transition-colors" />
-            </div>
-          </>
-        )}
-        {!editable && (
-          <div className="absolute left-3 top-3 text-[10px] font-black text-violet-700/70 uppercase tracking-widest pointer-events-none select-none">
-            {phase.name}
+          <div
+            ref={resizeHandleRef}
+            data-no-pan="resize"
+            className="absolute right-0 top-0 bottom-0 w-2.5 cursor-ew-resize hover:bg-violet-500/30 rounded-r-3xl transition-colors flex items-center justify-center group"
+            title={t('pj.resizeHint')}
+          >
+            <div className="w-0.5 h-8 bg-violet-400/60 group-hover:bg-violet-600 rounded-full transition-colors" />
           </div>
         )}
       </div>
@@ -379,7 +367,7 @@ function GanttBar({ task, phase, tIdx, rowRef, editable, maxDayIndex = 55, onCha
   }, [left, width]);
 
   useEffect(() => {
-    if (!editable || !barRef.current || reduced) return;
+    if (!editable || !barRef.current) return;
     const bar = barRef.current;
     const handle = handleRef.current;
 
