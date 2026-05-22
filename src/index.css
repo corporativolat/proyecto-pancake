@@ -514,10 +514,40 @@ body.dark .text-emerald-600 { color: #34d399 !important; }
 body.dark .hover\:border-emerald-300:hover { border-color: rgba(16,185,129,0.45) !important; }
 body.dark .bg-violet-100 { background: rgba(124,58,237,0.18) !important; color: #c4b5fd; }
 body.dark .text-violet-700 { color: #c4b5fd !important; }
+body.dark .text-violet-300 { color: #c4b5fd !important; }
 body.dark .bg-amber-100 { background: rgba(245,158,11,0.18) !important; color: #fde68a; }
 body.dark .text-amber-700 { color: #fde68a !important; }
 body.dark .bg-blue-100 { background: rgba(59,130,246,0.18) !important; color: #93c5fd; }
 body.dark .text-blue-700 { color: #93c5fd !important; }
+
+/* ===== Dark overrides para refactor mig-34 ===== */
+/* Rojos (BlockerCard, PriorityBadge atención, Cancelado, ProjectMetricsRow tone=red) */
+body.dark .bg-red-50 { background: rgba(239,68,68,0.10) !important; }
+body.dark .bg-red-100 { background: rgba(239,68,68,0.18) !important; color: #fca5a5; }
+body.dark .text-red-600 { color: #f87171 !important; }
+body.dark .text-red-700 { color: #fca5a5 !important; }
+body.dark .text-red-900 { color: #fecaca !important; }
+body.dark .border-red-200 { border-color: rgba(239,68,68,0.35) !important; }
+
+/* Borders soft que faltaban */
+body.dark .border-amber-200 { border-color: rgba(245,158,11,0.35) !important; }
+body.dark .border-emerald-200 { border-color: rgba(16,185,129,0.30) !important; }
+body.dark .border-violet-100,
+body.dark .border-violet-200 { border-color: rgba(124,58,237,0.30) !important; }
+body.dark .border-violet-300 { border-color: rgba(124,58,237,0.45) !important; }
+body.dark .border-ink-200 { border-color: #27272a !important; }
+
+/* Backgrounds ink translúcidos (tab content panels) */
+body.dark .bg-ink-50\/30,
+body.dark .bg-ink-50\/40 { background: rgba(10,10,12,0.6) !important; }
+body.dark .bg-ink-200 { background: #27272a !important; color: #e4e4e7; }
+
+/* Tabs activos / focus rings — sin override extra, la clase text-violet-700 ya
+   se reescribe con el override de arriba */
+
+/* Inputs blancos dentro de BlockerCard / textareas con fondo blanco explícito */
+body.dark textarea.bg-white,
+body.dark input.bg-white { background: #18181b !important; color: #fafafa !important; }
 
 /* COMMENTS */
 .comment-bubble {

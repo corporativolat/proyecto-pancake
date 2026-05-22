@@ -65,3 +65,27 @@ export async function removeAttachmentFile(url) {
   const path = url.slice(idx + '/attachments/'.length);
   await supabase.storage.from('attachments').remove([path]);
 }
+
+const ALLOWED_PLATFORM_IMAGE_EXT = new Set(['png','jpg','jpeg','webp','gif','svg']);
+
+export async function uploadPlatformImage(platformId, file) {
+  if (!file) throw new Error('Archivo requerido');
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (!ALLOWED_PLATFORM_IMAGE_EXT.has(ext)) {
+    throw new Error(`Tipo de imagen .${ext} no permitido`);
+  }
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const path = `${platformId}/${Date.now()}-${safeName}`;
+  const { error } = await supabase.storage.from('platforms').upload(path, file, { upsert: false, cacheControl: '3600' });
+  if (error) throw error;
+  const { data } = supabase.storage.from('platforms').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+export async function removePlatformImage(url) {
+  if (!url) return;
+  const idx = url.indexOf('/platforms/');
+  if (idx < 0) return;
+  const path = url.slice(idx + '/platforms/'.length);
+  await supabase.storage.from('platforms').remove([path]);
+}

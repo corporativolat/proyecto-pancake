@@ -31,7 +31,8 @@ const DIFF_TO_KIND: Record<number, ReminderKind> = {
   [-1]: "overdue+1", [-3]: "overdue+3", [-7]: "overdue+7", [-14]: "overdue+14", [-30]: "overdue+30",
 };
 
-const FINAL_STATUSES = new Set(["Finalizado", "Entregado"]);
+// Estados finales: no se notifican vencimientos. "Cancelado" incluido (mig-34).
+const FINAL_STATUSES = new Set(["Finalizado", "Entregado", "Cancelado"]);
 
 function diffDays(yyyyMmDd: string, today: Date): number {
   const due = new Date(yyyyMmDd + "T00:00:00Z");
@@ -192,6 +193,31 @@ async function handle(_req: Request): Promise<Response> {
         project_id: p.id, kind, recipient, error: errMsg,
       });
       results.push({ project: p.id, kind, recipient, ok: false, error: errMsg });
+    }
+
+    // In-app notification (campana). Idempotente: revisamos profile_id+project_id+kind.
+    // Sólo si el proyecto tiene owner_id; los proyectos sin dueño no notifican in-app.
+    if (p.owner_id) {
+      const isOverdue = kind === "due" || kind.startsWith("overdue+");
+      const inappKind = isOverdue ? "project_overdue" : "project_due_soon";
+      const { count: alreadyInApp } = await supabase
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("profile_id", p.owner_id)
+        .eq("project_id", p.id)
+        .eq("kind", inappKind)
+        .filter("meta->>window", "eq", kind);
+      if (!alreadyInApp || alreadyInApp === 0) {
+        await supabase.from("notifications").insert({
+          profile_id: p.owner_id,
+          kind: inappKind,
+          title: subject,
+          body: p.goal || "",
+          link: `/projects/${p.id}`,
+          project_id: p.id,
+          meta: { window: kind, due_date: p.projected_end_date },
+        });
+      }
     }
   }
 

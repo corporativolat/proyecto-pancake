@@ -134,7 +134,8 @@ export function projectCompleteness(p) {
 }
 
 // True si proyecto ya cerró (no debe contar como "vencido").
-export const isFinalStatus = (s) => s === 'Finalizado' || s === 'Entregado';
+// Incluye 'Cancelado' (mig-34) además de Finalizado/Entregado.
+export const isFinalStatus = (s) => s === 'Finalizado' || s === 'Entregado' || s === 'Cancelado';
 
 // Vencimiento contra projected_end_date vs hoy.
 // kind: 'overdue' | 'soon' (≤7d) | 'ok' | 'done' (finalizado) | 'none' (sin fecha)
@@ -150,15 +151,80 @@ export function vencimiento(project) {
   return { days, kind: 'ok' };
 }
 
+// STATUSES alineados con el Excel "Resumen" (mig-34). `step` controla el orden
+// canónico del dropdown y el prefijo numérico visible ("0. No iniciado" etc.).
+// `name` es la clave persistida en DB (sin prefijo) — no romper compat.
 export const STATUSES = [
-  { name: 'No iniciado', color: '#a1a1aa' },
-  { name: 'Planeación', color: '#06b6d4' },
-  { name: 'En Desarrollo', color: '#7c3aed' },
-  { name: 'En Pausa', color: '#f59e0b' },
-  { name: 'Pendiente de información', color: '#a855f7' },
-  { name: 'Validación de viabilidad', color: '#ec4899' },
-  { name: 'Finalizado', color: '#10b981' }
+  { name: 'No iniciado',              step: 0,  color: '#a1a1aa', label: '0. No iniciado' },
+  { name: 'Planeación',               step: 1,  color: '#06b6d4', label: '1. Planeación' },
+  { name: 'En Desarrollo',            step: 2,  color: '#7c3aed', label: '2. En Desarrollo' },
+  { name: 'Validación de viabilidad', step: 4,  color: '#ec4899', label: '4. Validación de viabilidad' },
+  { name: 'Entregado',                step: 6,  color: '#10b981', label: '6. Entregado' },
+  { name: 'Cancelado',                step: 7,  color: '#ef4444', label: '7. Cancelado' },
+  { name: 'En Pausa',                 step: 8,  color: '#f59e0b', label: 'En Pausa' },
+  { name: 'Pendiente de información', step: 9,  color: '#a855f7', label: 'Pendiente de información' },
+  { name: 'Finalizado',               step: 10, color: '#059669', label: 'Finalizado' }
 ];
+
+export const STATUS_BY_NAME = STATUSES.reduce((acc, s) => { acc[s.name] = s; return acc; }, {});
+
+// Marcador de "Atención" del Excel (⭐ / ⚠️).
+// Null = normal (sin marca).
+export const PRIORITY = {
+  estrella: { icon: '⭐', label: 'Estrella',  color: '#f59e0b', tone: 'amber', order: 0 },
+  atencion: { icon: '⚠️', label: 'Atención',  color: '#ef4444', tone: 'red',   order: 1 }
+};
+
+export const PRIORITY_OPTIONS = [
+  { value: '',         icon: '',   label: 'Normal' },
+  { value: 'estrella', icon: '⭐', label: 'Estrella' },
+  { value: 'atencion', icon: '⚠️', label: 'Atención' }
+];
+
+// Helpers de fechas (Δ inicio, Vencimiento granular, Duración total).
+// Todos devuelven null si falta la fecha base.
+export const _midnight = (iso) => iso ? new Date(iso + 'T00:00:00') : null;
+
+export function daysSinceStart(project) {
+  const d = _midnight(project?.start_date);
+  if (!d) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.floor((today - d) / 86400000);
+}
+
+export function daysToDue(project) {
+  const d = _midnight(project?.projected_end_date);
+  if (!d) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.round((d - today) / 86400000);
+}
+
+export function projectDurationDays(project) {
+  const s = _midnight(project?.start_date);
+  const e = _midnight(project?.projected_end_date);
+  if (!s || !e) return null;
+  return Math.max(0, Math.floor((e - s) / 86400000));
+}
+
+// Categorías combinadas (primaria + extras del array mig-34).
+// Devuelve siempre array de uuids; útil para filtros y tooltips.
+export function projectAllCategoryIds(project) {
+  const ids = [];
+  if (project?.category_id) ids.push(project.category_id);
+  for (const id of project?.extra_category_ids || []) {
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+export function projectCategoryNames(project, categories = []) {
+  return projectAllCategoryIds(project)
+    .map(id => categories.find(c => c.id === id)?.name)
+    .filter(Boolean);
+}
+
+// True si el proyecto está bloqueado (mig-34 blocker_note no vacío).
+export const isBlocked = (project) => !!(project?.blocker_note && project.blocker_note.trim());
 
 // Descripciones oficiales de cada columna del proyecto.
 // Se muestran como ayuda inline en el modal de creación y en el detalle.

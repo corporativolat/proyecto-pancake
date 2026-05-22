@@ -5,13 +5,18 @@ import gsap from 'gsap';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcPhaseProgress, calcProjectProgress, taskProgress, projectMaxDayIndex, clampSpanToProject, clampSpanToPhase, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, effectiveHealth, projectCompleteness, fmtMoney } from '../lib/utils';
+import { calcPhaseProgress, calcProjectProgress, taskProgress, projectMaxDayIndex, clampSpanToProject, clampSpanToPhase, STATUSES, PROJECT_FIELD_HELP, effectiveHealth, projectCompleteness, fmtMoney, isBlocked } from '../lib/utils';
 import Avatar from '../components/Avatar.jsx';
 import Comments from '../components/Comments.jsx';
 import ActivityFeed from '../components/ActivityFeed.jsx';
 import ClientDocsPanel from '../components/ClientDocsPanel.jsx';
 import ClientTasksPanel from '../components/ClientTasksPanel.jsx';
 import ProjectQuestionnairesSection from '../components/ProjectQuestionnairesSection.jsx';
+import PriorityBadge from '../components/PriorityBadge.jsx';
+import CategoryChips from '../components/CategoryChips.jsx';
+import ProjectMetricsRow from '../components/ProjectMetricsRow.jsx';
+import BlockerCard from '../components/BlockerCard.jsx';
+import ProjectDetailTabs, { useProjectTab } from '../components/ProjectDetailTabs.jsx';
 import { animateBars, confetti, reduced } from '../lib/motion';
 import { updateProject, deleteProjectById, setProjectMember, createPhase, updatePhase, deletePhase, createTask, updateTask, deleteTask, reorderPhases, createMilestone, updateMilestone, deleteMilestone, fetchMilestoneTemplates, applyMilestoneTemplate } from '../lib/data';
 import { supabase } from '../lib/supabase';
@@ -41,18 +46,9 @@ export default function ProjectDetail() {
   const [clientTasksBadge, setClientTasksBadge] = useState(0);
   const [showTeamEditor, setShowTeamEditor] = useState(false);
   const [showExec, setShowExec] = useState(false);
-  const [mobileTab, setMobileTab] = useState('roadmap'); // 'roadmap' | 'gantt'
+  const [mobileTab, setMobileTab] = useState('roadmap'); // 'roadmap' | 'gantt' (sub-tabs dentro de Seguimiento)
   const [roadmapPopup, setRoadmapPopup] = useState(false);
-  const [headerCollapsed, setHeaderCollapsed] = useState(() => {
-    try { return localStorage.getItem('pj-header-collapsed') === '1'; } catch { return false; }
-  });
-  const toggleHeader = () => {
-    setHeaderCollapsed(v => {
-      const nv = !v;
-      try { localStorage.setItem('pj-header-collapsed', nv ? '1' : '0'); } catch { /* noop */ }
-      return nv;
-    });
-  };
+  const [tab, setTab] = useProjectTab(); // Información | Seguimiento | Operación | Gestión (mig-34)
   const headerRef = useRef(null);
   const phasesScrollRef = useRef(null);
   const ganttScrollRef = useRef(null);
@@ -170,6 +166,14 @@ export default function ProjectDetail() {
       <div ref={headerRef} className="pj-header px-4 py-3 md:px-10 md:py-3 border-b bg-white z-20 flex-shrink-0">
         <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-2 mb-2 md:mb-3">
           <div className="flex-1 max-w-4xl min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <PriorityBadge value={project.priority} size="md" editable={editable} onChange={(v) => debouncedUpdate('priority', v)} />
+              {isBlocked(project) && (
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest bg-red-50 text-red-700 border border-red-200 rounded-full px-2.5 py-1" title={project.blocker_note}>
+                  🚧 Bloqueado
+                </span>
+              )}
+            </div>
             <input
               type="text" value={project.title} disabled={!editable}
               onChange={e => debouncedUpdate('title', e.target.value)}
@@ -185,15 +189,15 @@ export default function ProjectDetail() {
                 className="text-sm font-bold border-none focus:ring-0 text-ink-400 bg-transparent w-auto outline-none min-w-0 max-w-[12rem] mr-1"
                 placeholder={t('pj.companyPlaceholder')}
               />
-              <select value={project.category_id || ''} disabled={!editable}
-                onChange={e => debouncedUpdate('category_id', e.target.value)}
-                title={(() => {
-                  const c = categories.find(x => x.id === project.category_id);
-                  return c ? `Tipo: ${c.name} — ${PROJECT_CATEGORY_HELP[c.name] || PROJECT_FIELD_HELP.category_id}` : PROJECT_FIELD_HELP.category_id;
-                })()}
-                className="text-[10px] font-bold uppercase tracking-widest bg-violet-50 text-violet-700 px-3 py-1 rounded-full border-none focus:ring-2 focus:ring-violet-500 outline-none max-w-full">
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <CategoryChips
+                project={project}
+                categories={categories}
+                editable={editable}
+                onChange={({ category_id, extra_category_ids }) => {
+                  debouncedUpdate('category_id', category_id);
+                  debouncedUpdate('extra_category_ids', extra_category_ids);
+                }}
+              />
               <div className="inline-flex items-center gap-1.5 bg-ink-100 rounded-full pl-2 pr-1 py-0.5" title={PROJECT_FIELD_HELP.start_date}>
                 <Calendar className="w-3 h-3 text-ink-400" />
                 <input type="date" value={project.start_date || ''} disabled={!editable}
@@ -219,7 +223,7 @@ export default function ProjectDetail() {
               })()}
               {(() => {
                 const score = projectCompleteness(project);
-                if (score >= 80) return null; // solo alerta si falta info
+                if (score >= 80) return null;
                 const cls = score >= 50
                   ? 'bg-amber-50 text-amber-700 border-amber-200'
                   : 'bg-red-50 text-red-700 border-red-200';
@@ -230,6 +234,9 @@ export default function ProjectDetail() {
                   </div>
                 );
               })()}
+            </div>
+            <div className="mt-2">
+              <ProjectMetricsRow project={project} dense />
             </div>
           </div>
           <div className="flex gap-2 items-start flex-wrap">
@@ -242,213 +249,272 @@ export default function ProjectDetail() {
                 <span className="text-sm font-black text-violet-600 tabular">{projProg}%</span>
               </div>
             </div>
-            <button onClick={toggleHeader} className="btn-soft" title={headerCollapsed ? 'Mostrar detalles' : 'Ocultar detalles'}>
-              {headerCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-              <span className="hidden xl:inline">{headerCollapsed ? 'Detalles' : 'Compactar'}</span>
-            </button>
             <button onClick={() => setShowFull(true)} className="btn-soft" title={t('pj.expand')}>
               <Maximize2 className="w-3.5 h-3.5" /> <span className="hidden xl:inline">{t('pj.expand')}</span>
             </button>
             <button onClick={() => setShowExec(true)} className="btn-soft" title={t('pj.report')}>
               <FileText className="w-3.5 h-3.5" /> <span className="hidden xl:inline">{t('pj.report')}</span>
             </button>
-            <button onClick={() => setShowClientDocs(true)} className="btn-soft relative" title="Documentos del cliente">
-              <FileText className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Docs</span>
-              {clientDocsBadge > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-black flex items-center justify-center shadow-md ring-2 ring-white">
-                  {clientDocsBadge > 9 ? '9+' : clientDocsBadge}
-                </span>
-              )}
-            </button>
-            <button onClick={() => setShowClientTasks(true)} className="btn-soft relative" title="Tareas para el cliente">
-              <ListChecks className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Tareas</span>
-              {clientTasksBadge > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-violet-600 text-white text-[10px] font-black flex items-center justify-center shadow-md ring-2 ring-white">
-                  {clientTasksBadge > 9 ? '9+' : clientTasksBadge}
-                </span>
-              )}
-            </button>
             {can('deleteProject') && <button onClick={handleDelete} className="btn-danger" title={t('pj.confirm.deleteProjectTitle')}><Trash2 className="w-3.5 h-3.5" /></button>}
             <button onClick={() => navigate('/projects')} className="btn-dark" title={t('pj.back')}><X className="w-3.5 h-3.5" /></button>
           </div>
         </div>
-
-        {!headerCollapsed && (<>
-        {/* Fila 1: Objetivo + Observación lado a lado (mismo height) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pj-extra">
-          <div>
-            <DetailLabel label={t('pj.objectiveLabel')} help={PROJECT_FIELD_HELP.goal} />
-            <textarea value={project.goal || ''} disabled={!editable} onChange={e => debouncedUpdate('goal', e.target.value)} className="input-light h-20 resize-none w-full" placeholder={t('pj.objectivePlaceholder')} />
-          </div>
-          <div>
-            <DetailLabel label={t('pj.observationsLabel')} help={PROJECT_FIELD_HELP.observation} />
-            <textarea value={project.observation || ''} disabled={!editable} onChange={e => debouncedUpdate('observation', e.target.value)} className="w-full bg-amber-50 border border-amber-100 rounded-2xl px-4 py-2 text-[11px] font-medium italic text-amber-900 outline-none h-20 resize-none focus:ring-2 focus:ring-amber-500" placeholder={t('pj.observationsPlaceholder')} />
-          </div>
-        </div>
-
-        {/* Fila 2: Responsable (con toggle) + Status + Salud + Dependencia */}
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 pj-extra mt-2">
-          <div className="md:col-span-2">
-            <div className="flex items-center justify-between mb-1">
-              <DetailLabel label={t('pj.responsibleLabel')} help={PROJECT_FIELD_HELP.owner_id} />
-              <label className="text-[10px] font-bold text-ink-500 flex items-center gap-1 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={!!project.owner_id}
-                  disabled={!editable}
-                  onChange={e => {
-                    if (e.target.checked) {
-                      debouncedUpdate('owner_label', '');
-                      debouncedUpdate('owner_id', profiles[0]?.id || null);
-                    } else {
-                      debouncedUpdate('owner_id', null);
-                    }
-                  }}
-                  className="accent-violet-600 w-3 h-3"
-                />
-                {t('projects.field.ownerHasAccount')}
-              </label>
-            </div>
-            {project.owner_id ? (
-              <select value={project.owner_id} disabled={!editable} onChange={e => debouncedUpdate('owner_id', e.target.value || null)} className="input-light">
-                <option value="">{t('projects.field.ownerSelectEmpty')}</option>
-                {profiles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={project.owner_label || ''}
-                disabled={!editable}
-                onChange={e => debouncedUpdate('owner_label', e.target.value)}
-                placeholder={t('projects.field.ownerLabelPlaceholder')}
-                className="input-light"
-              />
-            )}
-          </div>
-          <div>
-            <DetailLabel label={t('pj.status')} help={PROJECT_FIELD_HELP.status} />
-            <select value={project.status} disabled={!editable} onChange={e => debouncedUpdate('status', e.target.value)} className="input-light">
-              {STATUSES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <DetailLabel label={t('pj.healthLabel')} help={t('pj.healthHelp')} />
-            <div className="flex items-center gap-2">
-              <span className={`status-dot status-${effectiveHealth(project, projProg)}`} />
-              <select
-                value={project.health_override ?? ''}
-                disabled={!can('editAll')}
-                onChange={e => {
-                  const v = e.target.value;
-                  debouncedUpdate('health_override', v === '' ? null : parseInt(v));
-                }}
-                className="input-light flex-1"
-                title={can('editAll') ? t('pj.healthHelp') : t('pj.healthAdminOnly')}
-              >
-                <option value="">{t('pj.healthAuto')}</option>
-                <option value="1">{t('pj.healthGreen')}</option>
-                <option value="2">{t('pj.healthAmber')}</option>
-                <option value="3">{t('pj.healthRed')}</option>
-              </select>
-            </div>
-          </div>
-          <div className="md:col-span-2">
-            <DetailLabel label={t('pj.dependencyLabel')} help={PROJECT_FIELD_HELP.client_lead} />
-            <input type="text" value={project.client_lead || ''} disabled={!editable} onChange={e => debouncedUpdate('client_lead', e.target.value)} placeholder={t('pj.dependencyPlaceholder')} className="input-light" />
-          </div>
-        </div>
-
-        {/* Fila 3: Fin + Entrega + Contrato */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pj-extra mt-2">
-          <div>
-            <DetailLabel label={t('pj.projectedEnd')} help={PROJECT_FIELD_HELP.projected_end_date} />
-            <input type="date" value={project.projected_end_date || ''} disabled={!editable} onChange={e => debouncedUpdate('projected_end_date', e.target.value || null)} className="input-light" />
-          </div>
-          <div>
-            <DetailLabel label={t('pj.deliveryDate')} help={PROJECT_FIELD_HELP.delivery_date} />
-            <input type="date" value={project.delivery_date || ''} disabled={!editable} onChange={e => debouncedUpdate('delivery_date', e.target.value || null)} className="input-light" />
-          </div>
-          <div className="md:col-span-2">
-            <DetailLabel label={t('pj.contractLabel')} help={PROJECT_FIELD_HELP.contract_url} />
-            <div className="flex gap-2">
-              <input type="text" value={project.contract_url || ''} disabled={!editable} onChange={e => debouncedUpdate('contract_url', e.target.value)} placeholder={t('pj.contractPlaceholder')} className="input-light flex-1" />
-              {project.contract_url && /^https?:\/\//i.test(project.contract_url) && (
-                <a href={project.contract_url} target="_blank" rel="noreferrer" className="btn-soft text-[10px]" title={t('pj.openContract')}>↗</a>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Fila 5: Equipo dueño (mig-27). */}
-        <TeamRow project={project} editable={editable} onChange={refreshProjects} />
-
-        {(() => {
-          const memberIds = new Set(project.member_ids || []);
-          const ownerId = project.owner_id;
-          const activeUsers = profiles.filter(u => u.id === ownerId || memberIds.has(u.id));
-          if (activeUsers.length === 0 && !editable) return null;
-          return (
-            <div className="mt-2 pj-extra">
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest">{t('pj.team')}</label>
-                {editable && (
-                  <button onClick={() => setShowTeamEditor(s => !s)} className="btn-primary-sm text-[10px]">
-                    {showTeamEditor ? <ChevronUp className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                    {showTeamEditor ? 'Cerrar' : (activeUsers.length === 0 ? 'Asignar miembros' : 'Añadir / quitar')}
-                  </button>
-                )}
-              </div>
-              {activeUsers.length === 0 ? (
-                <p className="text-[11px] text-ink-400 italic">Sin equipo asignado. {editable && 'Pulsa "Asignar miembros" para añadir personas a este proyecto.'}</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {activeUsers.map(u => {
-                    const isOwner = ownerId === u.id;
-                    const cls = isOwner ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md' : 'bg-emerald-100 text-emerald-700';
-                    return (
-                      <span key={u.id} className={`text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-2 ${cls}`}>
-                        <Avatar user={u} size={20} />
-                        {u.name}{isOwner ? ' ' + t('pj.leaderTag') : ''}
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-              {showTeamEditor && editable && (
-                <div className="mt-2 p-3 bg-violet-50/40 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-2xl">
-                  <div className="text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-widest mb-2">
-                    Toca un nombre para añadirlo o quitarlo
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {profiles.map(u => {
-                      const isOwner = ownerId === u.id;
-                      const isMember = memberIds.has(u.id);
-                      const cls = isOwner
-                        ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white'
-                        : isMember
-                          ? 'bg-emerald-500 text-white shadow-md'
-                          : 'bg-white text-ink-600 border border-ink-200 hover:border-violet-400';
-                      return (
-                        <button key={u.id} onClick={() => toggleMember(u.id, isOwner, isMember)} disabled={isOwner}
-                          className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition flex items-center gap-2 ${cls} ${isOwner ? 'opacity-60 cursor-not-allowed' : 'hover:scale-105 hover:shadow-md'}`}>
-                          <Avatar user={u} size={18} />
-                          {u.name}
-                          {isOwner && <span className="text-[9px] opacity-80">{t('pj.leaderTag')}</span>}
-                          {isMember && !isOwner && <span className="text-[9px]">✓</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {profiles.length === 0 && <p className="text-[11px] text-ink-500 italic mt-2">No hay otros miembros en la plataforma todavía.</p>}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-        </>)}
       </div>
 
-      {/* Tabs solo en móvil. >=md ambos paneles se muestran lado a lado. */}
+      <ProjectDetailTabs tab={tab} onChange={setTab} badges={{ gestion: clientDocsBadge + clientTasksBadge }} />
+
+      {tab === 'info' && (
+        <div className="flex-1 overflow-y-auto scroller bg-ink-50/30 px-4 py-4 md:px-10 md:py-6 min-h-0">
+          <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-5">
+
+            {/* Columna izquierda (lg: col-span-8): Identidad / Estado / Fechas */}
+            <div className="lg:col-span-8 space-y-4 md:space-y-5">
+
+              {/* Card 1 — Propósito y observaciones */}
+              <InfoCard title="Propósito y observaciones">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pj-extra">
+                  <div>
+                    <DetailLabel label={t('pj.objectiveLabel')} help={PROJECT_FIELD_HELP.goal} />
+                    <textarea value={project.goal || ''} disabled={!editable} onChange={e => debouncedUpdate('goal', e.target.value)} className="input-light h-24 resize-none w-full" placeholder={t('pj.objectivePlaceholder')} />
+                  </div>
+                  <div>
+                    <DetailLabel label={t('pj.observationsLabel')} help={PROJECT_FIELD_HELP.observation} />
+                    <textarea value={project.observation || ''} disabled={!editable} onChange={e => debouncedUpdate('observation', e.target.value)} className="w-full bg-amber-50 border border-amber-100 rounded-2xl px-4 py-2 text-[11px] font-medium italic text-amber-900 outline-none h-24 resize-none focus:ring-2 focus:ring-amber-500" placeholder={t('pj.observationsPlaceholder')} />
+                  </div>
+                </div>
+              </InfoCard>
+
+              {/* Card 2 — Estado, atención, salud y tipo (Excel: ESTADO + ATENCIÓN + TIPO) */}
+              <InfoCard title="Clasificación y estado">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pj-extra">
+                  <div>
+                    <DetailLabel label={t('pj.status')} help={PROJECT_FIELD_HELP.status} />
+                    <select value={project.status} disabled={!editable} onChange={e => debouncedUpdate('status', e.target.value)} className="input-light">
+                      {STATUSES.map(s => <option key={s.name} value={s.name}>{s.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <DetailLabel label="Atención (Excel)" help="Marcador de prioridad del Excel: ⭐ Estrella, ⚠️ Atención, vacío = normal." />
+                    <PriorityBadge value={project.priority} size="md" editable={editable} onChange={(v) => debouncedUpdate('priority', v)} className="w-full justify-center" />
+                  </div>
+                  <div>
+                    <DetailLabel label={t('pj.healthLabel')} help={t('pj.healthHelp')} />
+                    <div className="flex items-center gap-2">
+                      <span className={`status-dot status-${effectiveHealth(project, projProg)}`} />
+                      <select
+                        value={project.health_override ?? ''}
+                        disabled={!can('editAll')}
+                        onChange={e => {
+                          const v = e.target.value;
+                          debouncedUpdate('health_override', v === '' ? null : parseInt(v));
+                        }}
+                        className="input-light flex-1"
+                        title={can('editAll') ? t('pj.healthHelp') : t('pj.healthAdminOnly')}
+                      >
+                        <option value="">{t('pj.healthAuto')}</option>
+                        <option value="1">{t('pj.healthGreen')}</option>
+                        <option value="2">{t('pj.healthAmber')}</option>
+                        <option value="3">{t('pj.healthRed')}</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <DetailLabel label="Tipo(s) (Excel: TIPO — multi-valor)" help={PROJECT_FIELD_HELP.category_id} />
+                  <CategoryChips
+                    project={project}
+                    categories={categories}
+                    editable={editable}
+                    onChange={({ category_id, extra_category_ids }) => {
+                      debouncedUpdate('category_id', category_id);
+                      debouncedUpdate('extra_category_ids', extra_category_ids);
+                    }}
+                    className="mt-1"
+                  />
+                </div>
+                <div className="mt-3">
+                  <DetailLabel label="% Cumplimiento (Excel)" help="Calculado desde las actividades del proyecto. Edita el manual_progress si no hay tareas." />
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 bg-ink-100 h-2.5 rounded-full overflow-hidden">
+                      <div className="progress-fill h-full transition-all duration-700" style={{ width: projProg + '%' }} />
+                    </div>
+                    <span className="text-sm font-black text-violet-600 tabular">{projProg}%</span>
+                  </div>
+                </div>
+              </InfoCard>
+
+              {/* Card 3 — Fechas + Contrato + Métricas (Excel cols 11-16) */}
+              <InfoCard title="Fechas, contrato y métricas">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pj-extra">
+                  <div>
+                    <DetailLabel label="Fecha de inicio (Excel)" help={PROJECT_FIELD_HELP.start_date} />
+                    <input type="date" value={project.start_date || ''} disabled={!editable} onChange={e => debouncedUpdate('start_date', e.target.value || null)} className="input-light" />
+                  </div>
+                  <div>
+                    <DetailLabel label="Fecha fin proyectada (Excel)" help={PROJECT_FIELD_HELP.projected_end_date} />
+                    <input type="date" value={project.projected_end_date || ''} disabled={!editable} onChange={e => debouncedUpdate('projected_end_date', e.target.value || null)} className="input-light" />
+                  </div>
+                  <div>
+                    <DetailLabel label="Fecha oficial de entrega (Excel)" help={PROJECT_FIELD_HELP.delivery_date} />
+                    <input type="date" value={project.delivery_date || ''} disabled={!editable} onChange={e => debouncedUpdate('delivery_date', e.target.value || null)} className="input-light" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <DetailLabel label="Contrato (Excel: CONTRATO)" help={PROJECT_FIELD_HELP.contract_url} />
+                  <div className="flex gap-2">
+                    <input type="text" value={project.contract_url || ''} disabled={!editable} onChange={e => debouncedUpdate('contract_url', e.target.value)} placeholder={t('pj.contractPlaceholder')} className="input-light flex-1" />
+                    {project.contract_url && /^https?:\/\//i.test(project.contract_url) && (
+                      <a href={project.contract_url} target="_blank" rel="noreferrer" className="btn-soft text-[10px]" title={t('pj.openContract')}>↗</a>
+                    )}
+                  </div>
+                </div>
+                {/* Métricas calculadas (Excel cols 12, 14, 16) — siempre visibles */}
+                <div className="mt-3">
+                  <DetailLabel label="Métricas calculadas (Excel cols 12, 14, 16)" help="∆ días desde inicio · Tiempo de vencimiento · Duración del proyecto. Derivadas de las fechas." />
+                  <div className="mt-1">
+                    <ProjectMetricsRow project={project} />
+                  </div>
+                </div>
+              </InfoCard>
+
+              {/* Card 4 — Bloqueo activo (full-width dentro de la col izquierda) */}
+              <BlockerCard
+                project={project}
+                editable={editable}
+                onChange={(v) => debouncedUpdate('blocker_note', v)}
+              />
+
+            </div>
+
+            {/* Columna derecha (lg: col-span-4): Responsable / Dependencia / Equipo */}
+            <div className="lg:col-span-4 space-y-4 md:space-y-5">
+
+              {/* Card — Responsable + Dependencia */}
+              <InfoCard title="Responsabilidad">
+                <div className="space-y-3 pj-extra">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <DetailLabel label={t('pj.responsibleLabel')} help={PROJECT_FIELD_HELP.owner_id} />
+                      <label className="text-[10px] font-bold text-ink-500 flex items-center gap-1 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={!!project.owner_id}
+                          disabled={!editable}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              debouncedUpdate('owner_label', '');
+                              debouncedUpdate('owner_id', profiles[0]?.id || null);
+                            } else {
+                              debouncedUpdate('owner_id', null);
+                            }
+                          }}
+                          className="accent-violet-600 w-3 h-3"
+                        />
+                        {t('projects.field.ownerHasAccount')}
+                      </label>
+                    </div>
+                    {project.owner_id ? (
+                      <select value={project.owner_id} disabled={!editable} onChange={e => debouncedUpdate('owner_id', e.target.value || null)} className="input-light">
+                        <option value="">{t('projects.field.ownerSelectEmpty')}</option>
+                        {profiles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={project.owner_label || ''}
+                        disabled={!editable}
+                        onChange={e => debouncedUpdate('owner_label', e.target.value)}
+                        placeholder={t('projects.field.ownerLabelPlaceholder')}
+                        className="input-light"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <DetailLabel label={t('pj.dependencyLabel')} help={PROJECT_FIELD_HELP.client_lead} />
+                    <input type="text" value={project.client_lead || ''} disabled={!editable} onChange={e => debouncedUpdate('client_lead', e.target.value)} placeholder={t('pj.dependencyPlaceholder')} className="input-light" />
+                  </div>
+                </div>
+              </InfoCard>
+
+              {/* Card — Equipo dueño (mig-27) + miembros del proyecto */}
+              <InfoCard title="Equipo y miembros">
+                <div className="space-y-3 pj-extra">
+                  <TeamRow project={project} editable={editable} onChange={refreshProjects} />
+
+                  {(() => {
+                    const memberIds = new Set(project.member_ids || []);
+                    const ownerId = project.owner_id;
+                    const activeUsers = profiles.filter(u => u.id === ownerId || memberIds.has(u.id));
+                    if (activeUsers.length === 0 && !editable) return null;
+                    return (
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[10px] font-bold text-ink-500 uppercase tracking-widest">{t('pj.team')}</label>
+                          {editable && (
+                            <button onClick={() => setShowTeamEditor(s => !s)} className="btn-primary-sm text-[10px]">
+                              {showTeamEditor ? <ChevronUp className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                              {showTeamEditor ? 'Cerrar' : (activeUsers.length === 0 ? 'Asignar' : 'Editar')}
+                            </button>
+                          )}
+                        </div>
+                        {activeUsers.length === 0 ? (
+                          <p className="text-[11px] text-ink-400 italic">Sin equipo asignado. {editable && 'Pulsa "Asignar" para añadir personas.'}</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {activeUsers.map(u => {
+                              const isOwner = ownerId === u.id;
+                              const cls = isOwner ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md' : 'bg-emerald-100 text-emerald-700';
+                              return (
+                                <span key={u.id} className={`text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-2 ${cls}`}>
+                                  <Avatar user={u} size={20} />
+                                  {u.name}{isOwner ? ' ' + t('pj.leaderTag') : ''}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {showTeamEditor && editable && (
+                          <div className="mt-2 p-3 bg-violet-50/40 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-2xl">
+                            <div className="text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-widest mb-2">
+                              Toca un nombre para añadirlo o quitarlo
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {profiles.map(u => {
+                                const isOwner = ownerId === u.id;
+                                const isMember = memberIds.has(u.id);
+                                const cls = isOwner
+                                  ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white'
+                                  : isMember
+                                    ? 'bg-emerald-500 text-white shadow-md'
+                                    : 'bg-white text-ink-600 border border-ink-200 hover:border-violet-400';
+                                return (
+                                  <button key={u.id} onClick={() => toggleMember(u.id, isOwner, isMember)} disabled={isOwner}
+                                    className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition flex items-center gap-2 ${cls} ${isOwner ? 'opacity-60 cursor-not-allowed' : 'hover:scale-105 hover:shadow-md'}`}>
+                                    <Avatar user={u} size={18} />
+                                    {u.name}
+                                    {isOwner && <span className="text-[9px] opacity-80">{t('pj.leaderTag')}</span>}
+                                    {isMember && !isOwner && <span className="text-[9px]">✓</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {profiles.length === 0 && <p className="text-[11px] text-ink-500 italic mt-2">No hay otros miembros en la plataforma todavía.</p>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </InfoCard>
+
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {tab === 'seguimiento' && (<>
+      {/* Sub-tabs móvil: roadmap / gantt. >=md ambos paneles lado a lado. */}
       <div className="md:hidden flex border-b bg-white flex-shrink-0 sticky top-0 z-10">
         <button
           onClick={() => setMobileTab('roadmap')}
@@ -496,9 +562,6 @@ export default function ProjectDetail() {
             ))}
             <MilestonesEmptyBanner project={project} categories={categories} editable={editable} onApplied={refreshProjects} />
             <MilestonesPanel project={project} editable={editable} onChange={refreshProjects} />
-            <ProjectQuestionnairesSection project={project} editable={editable} />
-            <Comments projectId={project.id} />
-            <ActivityFeed projectId={project.id} compact />
           </>
         );
 
@@ -582,6 +645,69 @@ export default function ProjectDetail() {
           </>
         );
       })()}
+      </>)}
+
+      {tab === 'operacion' && (
+        <div className="flex-1 overflow-y-auto scroller bg-ink-50/30 px-4 py-4 md:px-10 md:py-6 min-h-0">
+          <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-5 gap-4 md:gap-5">
+            <div className="xl:col-span-3">
+              <InfoCard title="Comentarios">
+                <Comments projectId={project.id} />
+              </InfoCard>
+            </div>
+            <div className="xl:col-span-2">
+              <InfoCard title="Historial y actividad">
+                <ActivityFeed projectId={project.id} />
+              </InfoCard>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'gestion' && (
+        <div className="flex-1 overflow-y-auto scroller bg-ink-50/30 px-4 py-4 md:px-10 md:py-6 min-h-0">
+          <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
+            <InfoCard
+              title={<span className="inline-flex items-center gap-2"><FileText className="w-3.5 h-3.5" /> Documentos del cliente</span>}
+              action={clientDocsBadge > 0 ? (
+                <span className="min-w-[20px] h-[20px] px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-black inline-flex items-center justify-center">
+                  {clientDocsBadge > 9 ? '9+' : clientDocsBadge}
+                </span>
+              ) : null}
+            >
+              <ClientDocsPanel projectId={project.id} />
+            </InfoCard>
+
+            <InfoCard
+              title={<span className="inline-flex items-center gap-2"><ListChecks className="w-3.5 h-3.5" /> Tareas para el cliente</span>}
+              action={clientTasksBadge > 0 ? (
+                <span className="min-w-[20px] h-[20px] px-1.5 rounded-full bg-violet-600 text-white text-[10px] font-black inline-flex items-center justify-center">
+                  {clientTasksBadge > 9 ? '9+' : clientTasksBadge}
+                </span>
+              ) : null}
+            >
+              <ClientTasksPanel project={project} />
+            </InfoCard>
+
+            <div className="lg:col-span-2">
+              <InfoCard>
+                <ProjectQuestionnairesSection project={project} editable={editable} />
+              </InfoCard>
+            </div>
+
+            {project.contract_url && /^https?:\/\//i.test(project.contract_url) && (
+              <div className="lg:col-span-2">
+                <InfoCard title="Contrato firmado">
+                  <a href={project.contract_url} target="_blank" rel="noreferrer" className="btn-soft inline-flex">
+                    <FileText className="w-3.5 h-3.5" /> Abrir contrato firmado
+                  </a>
+                  <p className="text-[11px] text-ink-400 mt-2 truncate" title={project.contract_url}>{project.contract_url}</p>
+                </InfoCard>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {editingTask && (
         <TaskModal
@@ -616,6 +742,24 @@ export default function ProjectDetail() {
         </Modal>
       )}
       {showExec && <ExecModal project={project} profiles={profiles} onClose={() => setShowExec(false)} />}
+    </section>
+  );
+}
+
+// Card titulado reutilizable para los tabs Información / Operación / Gestión.
+// Mantiene jerarquía visual: contenedor blanco, borde sutil, título uppercase.
+function InfoCard({ title, action, children, className = '' }) {
+  return (
+    <section className={`bg-white rounded-2xl border border-ink-100 p-4 md:p-5 ${className}`}>
+      {(title || action) && (
+        <header className="flex items-center justify-between mb-3">
+          {title && (
+            <h3 className="text-[10px] font-black text-ink-500 uppercase tracking-widest">{title}</h3>
+          )}
+          {action}
+        </header>
+      )}
+      {children}
     </section>
   );
 }

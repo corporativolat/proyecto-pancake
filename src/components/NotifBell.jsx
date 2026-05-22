@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CheckCheck, FolderKanban, FileText, MessageCircle, Flag, AlertCircle, Inbox, Users2, ClipboardList, ListChecks, Clock } from 'lucide-react';
+import { Bell, CheckCheck, FolderKanban, FileText, MessageCircle, Flag, AlertCircle, Inbox, Users2, ClipboardList, ListChecks, Clock, Star, AlertOctagon, CalendarClock } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
 import { fetchNotifications, markRead, markAllRead, subscribeNotifications } from '../lib/notifications';
@@ -242,7 +242,13 @@ const KIND_ICON = {
   client_task_reviewed:       { Icon: ListChecks, color: 'emerald' },
   client_task_due_soon:       { Icon: Clock, color: 'amber' },
   client_task_overdue:        { Icon: AlertCircle, color: 'red' },
-  client_task_overdue_staff:  { Icon: AlertCircle, color: 'red' }
+  client_task_overdue_staff:  { Icon: AlertCircle, color: 'red' },
+  // Mig-34: prioridad, bloqueo y vencimiento de proyecto.
+  project_priority_change:    { Icon: Star,          color: 'amber' },
+  project_blocked:            { Icon: AlertOctagon,  color: 'red' },
+  project_unblocked:          { Icon: CheckCheck,    color: 'emerald' },
+  project_due_soon:           { Icon: CalendarClock, color: 'amber' },
+  project_overdue:            { Icon: AlertCircle,   color: 'red' }
 };
 
 const COLOR_CLS = {

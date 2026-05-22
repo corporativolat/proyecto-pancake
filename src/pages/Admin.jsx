@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Tag, Plus, X, Bug, Flag, FileText, Layers, ClipboardList, Pencil } from 'lucide-react';
+import { Users, Tag, Plus, X, Bug, Flag, FileText, Layers, ClipboardList, Pencil, Upload, Trash2 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
@@ -17,6 +17,7 @@ import {
   fetchPlatforms, createPlatform, updatePlatform, deletePlatform,
   fetchQuestionnaireTemplates, createQuestionnaireTemplate, updateQuestionnaireTemplate, deleteQuestionnaireTemplate
 } from '../lib/questionnaires';
+import { uploadPlatformImage, removePlatformImage } from '../lib/storage';
 import { useToast } from '../lib/toast';
 import { askConfirm } from '../lib/confirm.jsx';
 import Modal from '../components/Modal.jsx';
@@ -496,11 +497,30 @@ function PlatformsSection() {
   };
 
   const remove = async (id) => {
+    const target = items.find(i => i.id === id);
     const ok = await askConfirm({ title: 'Eliminar plataforma', message: 'Se borrarán también todas sus plantillas de cuestionario. ¿Continuar?', danger: true });
     if (!ok) return;
     try {
+      if (target?.image_url) { try { await removePlatformImage(target.image_url); } catch { /* ignore */ } }
       await deletePlatform(id);
       setItems(prev => prev.filter(i => i.id !== id));
+    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
+  };
+
+  const onImagePick = async (p, file) => {
+    if (!file) return;
+    try {
+      if (p.image_url) { try { await removePlatformImage(p.image_url); } catch { /* ignore */ } }
+      const url = await uploadPlatformImage(p.id, file);
+      await patch(p.id, { image_url: url });
+    } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
+  };
+
+  const onImageRemove = async (p) => {
+    if (!p.image_url) return;
+    try {
+      try { await removePlatformImage(p.image_url); } catch { /* ignore */ }
+      await patch(p.id, { image_url: null });
     } catch (e) { showToast(t('common.errorPrefix') + e.message, 'error'); }
   };
 
@@ -521,8 +541,10 @@ function PlatformsSection() {
         {items.map(p => (
           <div key={p.id} className="p-4 rounded-2xl border border-ink-100 hover:shadow-md transition group">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shadow-sm" style={{ background: p.color + '22', color: p.color }}>
-                <span>{p.icon || '🔹'}</span>
+              <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shadow-sm overflow-hidden" style={{ background: p.color + '22', color: p.color }}>
+                {p.image_url
+                  ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+                  : <span>{p.icon || '🔹'}</span>}
               </div>
               <div className="flex-1 min-w-0">
                 <input
@@ -552,13 +574,14 @@ function PlatformsSection() {
               className="input-light text-xs resize-y w-full mb-2"
             />
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <input
                 defaultValue={p.icon || ''}
                 onBlur={e => e.target.value !== p.icon && patch(p.id, { icon: e.target.value.slice(0, 4) })}
                 placeholder="emoji"
                 className="input-light text-sm w-16 text-center"
                 maxLength={4}
+                title="Se usa cuando no hay imagen"
               />
               <input
                 type="color"
@@ -566,6 +589,26 @@ function PlatformsSection() {
                 onBlur={e => e.target.value !== p.color && patch(p.id, { color: e.target.value })}
                 className="w-7 h-7 rounded cursor-pointer border-0"
               />
+              <label className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-600 cursor-pointer px-2 py-1 rounded-lg border border-ink-200 hover:border-violet-400 hover:text-violet-700 transition">
+                <Upload className="w-3 h-3" />
+                {p.image_url ? 'Cambiar' : 'Imagen'}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onImagePick(p, f); }}
+                />
+              </label>
+              {p.image_url && (
+                <button
+                  type="button"
+                  onClick={() => onImageRemove(p)}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-500 hover:text-red-600 px-2 py-1 rounded-lg border border-ink-200 hover:border-red-300 transition"
+                  title="Quitar imagen"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              )}
               <label className="flex items-center gap-1.5 text-[11px] font-bold text-ink-600 cursor-pointer ml-auto">
                 <input type="checkbox" checked={p.active} onChange={e => patch(p.id, { active: e.target.checked })} className="accent-violet-600" />
                 Activa
@@ -653,7 +696,11 @@ function QuestionnaireTemplatesSection() {
             <div key={pl.id} className="rounded-2xl border border-ink-100 p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ background: pl.color + '22', color: pl.color }}>{pl.icon || '🔹'}</span>
+                  <span className="w-7 h-7 rounded-lg flex items-center justify-center text-sm overflow-hidden" style={{ background: pl.color + '22', color: pl.color }}>
+                    {pl.image_url
+                      ? <img src={pl.image_url} alt={pl.name} className="w-full h-full object-cover" />
+                      : (pl.icon || '🔹')}
+                  </span>
                   <span className="text-sm font-black text-ink-800">{pl.name}</span>
                   <span className="text-[10px] font-bold text-ink-400 bg-ink-100 px-2 py-0.5 rounded-full tabular">{tpls.length}</span>
                 </div>

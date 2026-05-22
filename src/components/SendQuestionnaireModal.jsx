@@ -132,8 +132,10 @@ export default function SendQuestionnaireModal({ projectId, onClose, onSent }) {
                     disabled={count === 0}
                     className="flex items-center gap-3 p-4 rounded-2xl border border-ink-200 hover:border-violet-400 hover:bg-violet-50 transition text-left disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shadow-sm" style={{ background: p.color + '22', color: p.color }}>
-                      <span>{p.icon || '🔹'}</span>
+                    <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shadow-sm overflow-hidden" style={{ background: p.color + '22', color: p.color }}>
+                      {p.image_url
+                        ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+                        : <span>{p.icon || '🔹'}</span>}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-black text-sm text-ink-900 truncate">{p.name}</div>

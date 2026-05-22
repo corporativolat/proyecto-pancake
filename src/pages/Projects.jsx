@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Maximize2, Minimize2, X, Trash2, Search, ArrowRight } from 'lucide-react';
+import { Plus, Maximize2, Minimize2, X, Trash2, Search, ArrowRight, Paperclip, MessageSquare } from 'lucide-react';
 import gsap from 'gsap';
 import { Draggable } from 'gsap/Draggable';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, vencimiento, isFinalStatus, effectiveHealth, fmtMoney } from '../lib/utils';
+import { calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, vencimiento, isFinalStatus, effectiveHealth, fmtMoney, daysSinceStart, projectDurationDays, projectAllCategoryIds, isBlocked } from '../lib/utils';
 import { reduced } from '../lib/motion';
 import { createProject, friendlyDbError } from '../lib/data';
 import { logger } from '../lib/logger';
@@ -14,6 +14,8 @@ import { uploadContract } from '../lib/storage';
 import { useToast } from '../lib/toast';
 import Avatar from '../components/Avatar.jsx';
 import ClientPicker from '../components/ClientPicker.jsx';
+import PriorityBadge from '../components/PriorityBadge.jsx';
+import CategoryChips from '../components/CategoryChips.jsx';
 
 if (typeof window !== 'undefined') gsap.registerPlugin(Draggable);
 
@@ -61,7 +63,8 @@ export default function Projects() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
   const [filterOverdue, setFilterOverdue] = useState(false);
-  const [sortBy, setSortBy] = useState('start_date');
+  const [filterPriority, setFilterPriority] = useState(''); // '' | 'estrella' | 'atencion' | 'blocked'
+  const [sortBy, setSortBy] = useState('priority');
   const [sortDir, setSortDir] = useState('desc');
 
   const [showNew, setShowNew] = useState(false);
@@ -114,9 +117,14 @@ export default function Projects() {
   // Filtros + búsqueda + sort
   const rows = useMemo(() => {
     let list = visiblePool;
-    if (filterCat) list = list.filter(p => p.category_id === filterCat);
+    if (filterCat) {
+      // Match primaria O cualquier extra (mig-34 multi-categoría)
+      list = list.filter(p => projectAllCategoryIds(p).includes(filterCat));
+    }
     if (filterStatus) list = list.filter(p => p.status === filterStatus);
     if (filterOverdue) list = list.filter(p => vencimiento(p).kind === 'overdue');
+    if (filterPriority === 'blocked') list = list.filter(p => isBlocked(p));
+    else if (filterPriority) list = list.filter(p => p.priority === filterPriority);
     if (filterOwner) {
       if (filterOwner === '__none') list = list.filter(p => !p.owner_id);
       else list = list.filter(p => p.owner_id === filterOwner);
@@ -125,14 +133,22 @@ export default function Projects() {
       const q = search.trim().toLowerCase();
       list = list.filter(p => {
         const owner = profileMap.get(p.owner_id);
-        const cat = categoryMap.get(p.category_id);
-        const blob = `${p.title} ${p.goal || ''} ${p.client_lead || ''} ${p.observation || ''} ${owner?.name || ''} ${p.owner_label || ''} ${cat?.name || ''}`.toLowerCase();
+        const catNames = projectAllCategoryIds(p)
+          .map(id => categoryMap.get(id)?.name).filter(Boolean).join(' ');
+        const blob = `${p.title} ${p.goal || ''} ${p.client_lead || ''} ${p.observation || ''} ${p.blocker_note || ''} ${owner?.name || ''} ${p.owner_label || ''} ${catNames}`.toLowerCase();
         return blob.includes(q);
       });
     }
+    // Orden de prioridad: estrella < atencion < normal (más urgente arriba)
+    const PRI_ORDER = { estrella: 0, atencion: 1 };
     list = [...list].sort((a, b) => {
       let av, bv;
       switch (sortBy) {
+        case 'priority': {
+          av = PRI_ORDER[a.priority] ?? 99;
+          bv = PRI_ORDER[b.priority] ?? 99;
+          break;
+        }
         case 'title':
           av = a.title || ''; bv = b.title || ''; break;
         case 'category':
@@ -142,7 +158,9 @@ export default function Projects() {
         case 'client_lead':
           av = a.client_lead || ''; bv = b.client_lead || ''; break;
         case 'status':
-          av = a.status || ''; bv = b.status || ''; break;
+          av = (STATUSES.find(s => s.name === a.status)?.step ?? 99);
+          bv = (STATUSES.find(s => s.name === b.status)?.step ?? 99);
+          break;
         case 'progress':
           av = calcProjectProgress(a); bv = calcProjectProgress(b); break;
         case 'health': {
@@ -159,10 +177,22 @@ export default function Projects() {
           av = a.start_date || ''; bv = b.start_date || ''; break;
         case 'projected_end_date':
           av = a.projected_end_date || ''; bv = b.projected_end_date || ''; break;
+        case 'delivery_date':
+          av = a.delivery_date || ''; bv = b.delivery_date || ''; break;
+        case 'contract':
+          av = a.contract_url ? 0 : 1; bv = b.contract_url ? 0 : 1; break;
+        case 'observation':
+          av = (a.observation || '').toLowerCase();
+          bv = (b.observation || '').toLowerCase(); break;
         case 'vencimiento': {
           const va = vencimiento(a), vb = vencimiento(b);
           av = va.kind === 'overdue' ? -va.days : (va.days ?? 9999);
           bv = vb.kind === 'overdue' ? -vb.days : (vb.days ?? 9999);
+          break;
+        }
+        case 'duration': {
+          av = projectDurationDays(a) ?? -1;
+          bv = projectDurationDays(b) ?? -1;
           break;
         }
         default:
@@ -173,11 +203,11 @@ export default function Projects() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return list;
-  }, [visiblePool, profileMap, categoryMap, filterCat, filterStatus, filterOwner, filterOverdue, search, sortBy, sortDir]);
+  }, [visiblePool, profileMap, categoryMap, filterCat, filterStatus, filterOwner, filterOverdue, filterPriority, search, sortBy, sortDir]);
 
   // Handlers stat cards: click toggle filtro / reset.
   const resetAllFilters = () => {
-    setFilterCat(''); setFilterStatus(''); setFilterOwner(''); setFilterOverdue(false); setSearch('');
+    setFilterCat(''); setFilterStatus(''); setFilterOwner(''); setFilterOverdue(false); setFilterPriority(''); setSearch('');
   };
   const handleStatClick = (kind) => {
     if (kind === 'total') { resetAllFilters(); return; }
@@ -197,7 +227,7 @@ export default function Projects() {
     if (kind === 'overdue') return filterOverdue;
     return false;
   };
-  const hasAnyFilter = !!(filterCat || filterStatus || filterOwner || filterOverdue || search);
+  const hasAnyFilter = !!(filterCat || filterStatus || filterOwner || filterOverdue || filterPriority || search);
 
   // Stats arriba
   const stats = useMemo(() => {
@@ -205,8 +235,11 @@ export default function Projects() {
     const enDes = visiblePool.filter(p => p.status === 'En Desarrollo').length;
     const finalized = visiblePool.filter(p => isFinalStatus(p.status)).length;
     const overdue = visiblePool.filter(p => vencimiento(p).kind === 'overdue').length;
+    const starred = visiblePool.filter(p => p.priority === 'estrella').length;
+    const attention = visiblePool.filter(p => p.priority === 'atencion').length;
+    const blocked = visiblePool.filter(p => isBlocked(p)).length;
     const avgCump = total ? Math.round(visiblePool.reduce((s, p) => s + calcProjectProgress(p), 0) / total) : 0;
-    return { total, enDes, finalized, overdue, avgCump };
+    return { total, enDes, finalized, overdue, avgCump, starred, attention, blocked };
   }, [visiblePool]);
 
   const toggleSort = (key) => {
@@ -287,6 +320,13 @@ export default function Projects() {
             {hasAnyFilter && (
               <div className="pm-filter-chip-row">
                 <span className="pm-filter-chip-label">{t('projects.activeFilters')}:</span>
+                {filterPriority && (
+                  <button className="pm-filter-chip" onClick={() => setFilterPriority('')}>
+                    {filterPriority === 'estrella' ? '⭐ Estrella'
+                      : filterPriority === 'atencion' ? '⚠️ Atención'
+                      : '🚧 Bloqueados'} <span aria-hidden>×</span>
+                  </button>
+                )}
                 {filterOverdue && (
                   <button className="pm-filter-chip" onClick={() => setFilterOverdue(false)}>
                     {t('projects.stat.overdue')} <span aria-hidden>×</span>
@@ -336,12 +376,18 @@ export default function Projects() {
               </select>
               <select className="pm-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                 <option value="">{t('projects.allStatus')}</option>
-                {STATUSES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                {STATUSES.map(s => <option key={s.name} value={s.name}>{s.label}</option>)}
               </select>
               <select className="pm-select" value={filterOwner} onChange={e => setFilterOwner(e.target.value)}>
                 <option value="">{t('projects.allResponsible')}</option>
                 {profiles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                 <option value="__none">{t('projects.unassigned')}</option>
+              </select>
+              <select className="pm-select" value={filterPriority} onChange={e => setFilterPriority(e.target.value)} title="Filtrar por atención (Excel)">
+                <option value="">Toda atención</option>
+                <option value="estrella">⭐ Estrella ({stats.starred})</option>
+                <option value="atencion">⚠️ Atención ({stats.attention})</option>
+                <option value="blocked">🚧 Bloqueados ({stats.blocked})</option>
               </select>
             </div>
 
@@ -349,42 +395,86 @@ export default function Projects() {
               <table className="pm-table">
                 <thead>
                   <tr>
+                    <Th k="priority" {...{ sortBy, sortDir, toggleSort }} title="Atención (⭐ / ⚠️) del Excel">
+                      <span aria-hidden style={{ fontSize: 12 }}>⚑</span>
+                    </Th>
                     <Th k="title" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.project')}</Th>
                     <Th k="category" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.type')}</Th>
                     <Th k="client_lead" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.dependency')}</Th>
+                    <Th k="contract" {...{ sortBy, sortDir, toggleSort }} className="hidden lg:table-cell" title="Contrato firmado (Excel: CONTRATO)">
+                      <Paperclip className="w-3 h-3 inline" />
+                    </Th>
                     <Th k="status" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.status')}</Th>
                     <Th k="health" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.health')}</Th>
                     <Th k="progress" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.progress')}</Th>
                     <Th k="owner" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.responsible')}</Th>
+                    <Th k="observation" {...{ sortBy, sortDir, toggleSort }} className="hidden lg:table-cell" title="Observaciones (Excel: OBSERVACIONES)">
+                      <MessageSquare className="w-3 h-3 inline" />
+                    </Th>
                     <Th k="start_date" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.start')}</Th>
                     <Th k="projected_end_date" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.end')}</Th>
                     <Th k="vencimiento" {...{ sortBy, sortDir, toggleSort }}>{t('projects.col.due')}</Th>
+                    <Th k="delivery_date" {...{ sortBy, sortDir, toggleSort }} className="hidden xl:table-cell" title="Fecha oficial de entrega (Excel: FECHA OFICIAL DE ENTREGA)">Entrega</Th>
+                    <Th k="duration" {...{ sortBy, sortDir, toggleSort }} className="hidden md:table-cell" title="Duración total del proyecto en días (Excel: Duración del proyecto)">⌛</Th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map(p => {
-                    const cat = categoryMap.get(p.category_id);
                     const owner = profileMap.get(p.owner_id);
                     const ownerName = owner?.name || p.owner_label || '';
                     const prog = calcProjectProgress(p);
                     const v = vencimiento(p);
                     const progClass = prog >= 70 ? 'ok' : prog >= 40 ? '' : 'low';
+                    const since = daysSinceStart(p);
+                    const dur = projectDurationDays(p);
+                    const blocked = isBlocked(p);
+                    const status = STATUSES.find(s => s.name === p.status);
+                    const statusLabel = status?.label || p.status || '—';
                     return (
                       <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
+                        <td style={{ width: 36, textAlign: 'center' }}>
+                          <span className="inline-flex items-center gap-0.5">
+                            <PriorityBadge value={p.priority} size="sm" />
+                            {blocked && (
+                              <span
+                                title={`Bloqueo activo: ${(p.blocker_note || '').slice(0, 200)}`}
+                                aria-hidden
+                                style={{ fontSize: 11 }}
+                              >🚧</span>
+                            )}
+                          </span>
+                        </td>
                         <td>
-                          <div className="pm-cell-title">{p.title}</div>
+                          <div className="pm-cell-title flex items-center gap-1.5">
+                            <span className="min-w-0 truncate">{p.title}</span>
+                            {p.observation && (
+                              <MessageSquare
+                                className="w-3 h-3 text-amber-500 flex-shrink-0 lg:hidden"
+                                title={`Observación: ${p.observation.slice(0, 200)}`}
+                              />
+                            )}
+                          </div>
                           {p.goal && <div className="pm-cell-sub">{p.goal}</div>}
                         </td>
                         <td>
-                          {cat
-                            ? <span className="pm-badge tipo">{cat.name}</span>
-                            : <span className="pm-muted">—</span>}
+                          <CategoryChips project={p} categories={categories} />
                         </td>
                         <td>{p.client_lead || <span className="pm-muted">—</span>}</td>
+                        <td className="hidden lg:table-cell" style={{ width: 48, textAlign: 'center' }}>
+                          {p.contract_url
+                            ? (/^https?:\/\//i.test(p.contract_url)
+                                ? <a href={p.contract_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-violet-600 hover:text-violet-800" title={`Contrato: ${p.contract_url}`}>
+                                    <Paperclip className="w-3.5 h-3.5 inline" />
+                                  </a>
+                                : <span title={p.contract_url} className="text-ink-500">
+                                    <Paperclip className="w-3.5 h-3.5 inline" />
+                                  </span>)
+                            : <span className="pm-muted">—</span>}
+                        </td>
                         <td>
-                          <span className={`pm-badge estado-${statusSlug(p.status)}`}>
-                            <span className="pm-badge-dot" />{p.status || '—'}
+                          <span className={`pm-badge estado-${statusSlug(p.status)}`} title={statusLabel}>
+                            <span className="pm-badge-dot" />{statusLabel}
                           </span>
                         </td>
                         <td>
@@ -402,7 +492,21 @@ export default function Projects() {
                               </div>
                             : <span className="pm-muted">—</span>}
                         </td>
-                        <td className="pm-cell-mono">{fmtDate(p.start_date, lang)}</td>
+                        <td className="hidden lg:table-cell" style={{ maxWidth: 220 }}>
+                          {p.observation
+                            ? <span className="text-[11px] text-ink-600 line-clamp-2 italic" title={p.observation}>
+                                {p.observation}
+                              </span>
+                            : <span className="pm-muted">—</span>}
+                        </td>
+                        <td className="pm-cell-mono">
+                          {fmtDate(p.start_date, lang)}
+                          {Number.isFinite(since) && (
+                            <div className="text-[10px] text-ink-400 font-bold" title="Δ días desde inicio">
+                              {since === 0 ? 'hoy' : since > 0 ? `hace ${since}d` : `en ${-since}d`}
+                            </div>
+                          )}
+                        </td>
                         <td className="pm-cell-mono">{fmtDate(p.projected_end_date, lang)}</td>
                         <td>
                           {v.kind === 'overdue' && <span className="pm-badge delay">{interp(t('projects.daysOverdue'), v.days)}</span>}
@@ -410,6 +514,14 @@ export default function Projects() {
                           {v.kind === 'ok' && <span className="pm-cell-mono">{interp(t('projects.dueIn'), v.days)}</span>}
                           {v.kind === 'done' && <span className="pm-cell-mono" style={{ color: '#10b981' }}>{t('projects.dueOk')}</span>}
                           {v.kind === 'none' && <span className="pm-muted">—</span>}
+                        </td>
+                        <td className="pm-cell-mono hidden xl:table-cell" title="Fecha oficial de entrega (Excel)">
+                          {p.delivery_date
+                            ? <span className="text-emerald-700 font-bold">{fmtDate(p.delivery_date, lang)}</span>
+                            : <span className="pm-muted">—</span>}
+                        </td>
+                        <td className="pm-cell-mono hidden md:table-cell" title="Duración del proyecto">
+                          {Number.isFinite(dur) ? `${dur}d` : <span className="pm-muted">—</span>}
                         </td>
                         <td className="pm-text-right">
                           <button className="pm-icon-btn" onClick={(e) => { e.stopPropagation(); navigate(`/projects/${p.id}`); }} title={t('projects.openProject')}>
@@ -451,11 +563,12 @@ export default function Projects() {
   );
 }
 
-function Th({ k, sortBy, sortDir, toggleSort, children }) {
+function Th({ k, sortBy, sortDir, toggleSort, children, className = '', title }) {
   const active = sortBy === k;
   const arrow = active ? (sortDir === 'asc' ? '↑' : '↓') : '↕';
+  const cls = [active ? 'sorted' : '', className].filter(Boolean).join(' ');
   return (
-    <th onClick={() => toggleSort(k)} className={active ? 'sorted' : ''}>
+    <th onClick={() => toggleSort(k)} className={cls} title={title}>
       <span className="pm-th-inner">
         {children}
         <span className={`pm-sort-arrow${active ? ' active' : ''}`} aria-hidden>{arrow}</span>
@@ -761,7 +874,7 @@ function NewProjectForm({ mode, categories, profiles, teams = [], defaultOwnerId
 
         <NewField label={t('projects.field.status')} help={PROJECT_FIELD_HELP.status}>
           <select value={form.status} onChange={e => set('status', e.target.value)} className="input-light">
-            {STATUSES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+            {STATUSES.map(s => <option key={s.name} value={s.name}>{s.label}</option>)}
           </select>
         </NewField>
 
