@@ -24,6 +24,13 @@ function useDebouncedField(value, onSave, delay = 500) {
   const lastSaved = useRef(value ?? '');
   const pendingAck = useRef(false);
   const ackTimer = useRef(null);
+  // Refs vivos para que el cleanup de desmontaje pueda flushear lo último
+  // que el usuario escribió aunque la prop onSave haya cambiado de identidad
+  // en cada render.
+  const localRef = useRef(local);
+  const onSaveRef = useRef(onSave);
+  useEffect(() => { localRef.current = local; }, [local]);
+  useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
 
   useEffect(() => {
     const v = value ?? '';
@@ -47,7 +54,7 @@ function useDebouncedField(value, onSave, delay = 500) {
       pendingAck.current = true;
       clearTimeout(ackTimer.current);
       ackTimer.current = setTimeout(() => { pendingAck.current = false; }, 5000);
-      onSave?.(v);
+      onSaveRef.current?.(v);
     }
   };
 
@@ -63,9 +70,17 @@ function useDebouncedField(value, onSave, delay = 500) {
     flush(local);
   };
 
+  // Al desmontar: si el usuario tecleó algo que aún no se había debounceado
+  // (cambia de tab Información→Seguimiento sin pausar 500ms, navega a otro
+  // proyecto, etc.) flusheamos sincrónicamente para no perder el texto.
+  // Sin esto, switchear tabs mientras se escribe parecía "borrar" lo escrito.
   useEffect(() => () => {
     clearTimeout(timer.current);
     clearTimeout(ackTimer.current);
+    if (localRef.current !== lastSaved.current) {
+      lastSaved.current = localRef.current;
+      onSaveRef.current?.(localRef.current);
+    }
   }, []);
 
   return { ref, local, handleChange, handleBlur };

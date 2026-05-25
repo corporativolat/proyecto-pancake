@@ -105,14 +105,17 @@ export default function ProjectDetail() {
   const project = projects.find(p => p.id === id);
   const editable = !!project && (can('editAll') || project.owner_id === profile?.id);
 
-  const debounceRef = useRef({});
-  const debouncedUpdate = useCallback((field, value) => {
+  // Antes había un setTimeout(500) interno aquí para coalescer escrituras —
+  // pero EditableField ya debouncea 500ms desde la última tecla, así que el
+  // doble debounce sólo ampliaba la ventana en la que un refresh stale de
+  // realtime (otro evento durante esos ~1000ms) podía pisar el patch
+  // optimista en el store y hacer flickear el breadcrumb / títulos al
+  // valor viejo (el usuario lo percibía como "el texto se borra"). Ahora
+  // el save al DB sale inmediato; selects/fechas/etc. tampoco lo necesitan.
+  const debouncedUpdate = useCallback(async (field, value) => {
     patchProject(id, { [field]: value });
-    clearTimeout(debounceRef.current[field]);
-    debounceRef.current[field] = setTimeout(async () => {
-      try { await updateProject(id, { [field]: value }); }
-      catch (e) { showToast(t('pj.errorSaving') + e.message); }
-    }, 500);
+    try { await updateProject(id, { [field]: value }); }
+    catch (e) { showToast(t('pj.errorSaving') + e.message); }
   }, [id, patchProject, showToast, t]);
 
   // (Eliminado el toggle de .shrink en scroll: clipaba el título/botones cuando
