@@ -5,7 +5,7 @@ import gsap from 'gsap';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcPhaseProgress, calcProjectProgress, taskProgress, projectMaxDayIndex, clampSpanToProject, clampSpanToPhase, STATUSES, PROJECT_FIELD_HELP, effectiveHealth, projectCompleteness, fmtMoney, isBlocked } from '../lib/utils';
+import { calcPhaseProgress, calcProjectProgress, taskProgress, projectMaxDayIndex, clampSpanToProject, clampSpanToPhase, STATUSES, PROJECT_FIELD_HELP, effectiveHealth, fmtMoney, isBlocked } from '../lib/utils';
 import Avatar from '../components/Avatar.jsx';
 import Comments from '../components/Comments.jsx';
 import ActivityFeed from '../components/ActivityFeed.jsx';
@@ -16,6 +16,7 @@ import PriorityBadge from '../components/PriorityBadge.jsx';
 import CategoryChips from '../components/CategoryChips.jsx';
 import ProjectMetricsRow from '../components/ProjectMetricsRow.jsx';
 import BlockerCard from '../components/BlockerCard.jsx';
+import { EditableField, EditableTextarea } from '../components/EditableField.jsx';
 import ProjectDetailTabs, { useProjectTab } from '../components/ProjectDetailTabs.jsx';
 import { animateBars, confetti, reduced } from '../lib/motion';
 import { updateProject, deleteProjectById, setProjectMember, createPhase, updatePhase, deletePhase, createTask, updateTask, deleteTask, reorderPhases, createMilestone, updateMilestone, deleteMilestone, fetchMilestoneTemplates, applyMilestoneTemplate } from '../lib/data';
@@ -104,14 +105,17 @@ export default function ProjectDetail() {
   const project = projects.find(p => p.id === id);
   const editable = !!project && (can('editAll') || project.owner_id === profile?.id);
 
-  const debounceRef = useRef({});
-  const debouncedUpdate = useCallback((field, value) => {
+  // Antes había un setTimeout(500) interno aquí para coalescer escrituras —
+  // pero EditableField ya debouncea 500ms desde la última tecla, así que el
+  // doble debounce sólo ampliaba la ventana en la que un refresh stale de
+  // realtime (otro evento durante esos ~1000ms) podía pisar el patch
+  // optimista en el store y hacer flickear el breadcrumb / títulos al
+  // valor viejo (el usuario lo percibía como "el texto se borra"). Ahora
+  // el save al DB sale inmediato; selects/fechas/etc. tampoco lo necesitan.
+  const debouncedUpdate = useCallback(async (field, value) => {
     patchProject(id, { [field]: value });
-    clearTimeout(debounceRef.current[field]);
-    debounceRef.current[field] = setTimeout(async () => {
-      try { await updateProject(id, { [field]: value }); }
-      catch (e) { showToast(t('pj.errorSaving') + e.message); }
-    }, 500);
+    try { await updateProject(id, { [field]: value }); }
+    catch (e) { showToast(t('pj.errorSaving') + e.message); }
   }, [id, patchProject, showToast, t]);
 
   // (Eliminado el toggle de .shrink en scroll: clipaba el título/botones cuando
@@ -174,17 +178,17 @@ export default function ProjectDetail() {
                 </span>
               )}
             </div>
-            <input
+            <EditableField
               type="text" value={project.title} disabled={!editable}
-              onChange={e => debouncedUpdate('title', e.target.value)}
+              onSave={v => debouncedUpdate('title', v)}
               title={PROJECT_FIELD_HELP.title}
               className="pj-title text-2xl md:text-3xl font-black border-none focus:ring-0 w-full bg-transparent p-0 text-ink-900 tracking-tight outline-none"
               placeholder={t('pj.titlePlaceholder')}
             />
             <div className="flex items-center gap-x-2 gap-y-1.5 mt-2 flex-wrap">
-              <input
+              <EditableField
                 type="text" value={project.company || ''} disabled={!editable}
-                onChange={e => debouncedUpdate('company', e.target.value)}
+                onSave={v => debouncedUpdate('company', v)}
                 title={PROJECT_FIELD_HELP.company}
                 className="text-sm font-bold border-none focus:ring-0 text-ink-400 bg-transparent w-auto outline-none min-w-0 max-w-[12rem] mr-1"
                 placeholder={t('pj.companyPlaceholder')}
@@ -218,19 +222,6 @@ export default function ProjectDetail() {
                     <span title={t('projects.field.hours')} className="tabular">{hrs}h</span>
                     <span className="opacity-40">·</span>
                     <span title={t('projects.field.perHour')} className="tabular">{fmt(rate)}/h</span>
-                  </div>
-                );
-              })()}
-              {(() => {
-                const score = projectCompleteness(project);
-                if (score >= 80) return null;
-                const cls = score >= 50
-                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                  : 'bg-red-50 text-red-700 border-red-200';
-                return (
-                  <div className={`inline-flex flex-nowrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest border rounded-full px-3 py-1 whitespace-nowrap ${cls}`} title={t('pj.completenessHelp')}>
-                    <span>{t('pj.completeness')}</span>
-                    <span className="tabular">{score}%</span>
                   </div>
                 );
               })()}
@@ -275,11 +266,11 @@ export default function ProjectDetail() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pj-extra">
                   <div>
                     <DetailLabel label={t('pj.objectiveLabel')} help={PROJECT_FIELD_HELP.goal} />
-                    <textarea value={project.goal || ''} disabled={!editable} onChange={e => debouncedUpdate('goal', e.target.value)} className="input-light h-24 resize-none w-full" placeholder={t('pj.objectivePlaceholder')} />
+                    <EditableTextarea value={project.goal || ''} disabled={!editable} onSave={v => debouncedUpdate('goal', v)} className="input-light h-24 resize-none w-full" placeholder={t('pj.objectivePlaceholder')} />
                   </div>
                   <div>
                     <DetailLabel label={t('pj.observationsLabel')} help={PROJECT_FIELD_HELP.observation} />
-                    <textarea value={project.observation || ''} disabled={!editable} onChange={e => debouncedUpdate('observation', e.target.value)} className="w-full bg-amber-50 border border-amber-100 rounded-2xl px-4 py-2 text-[11px] font-medium italic text-amber-900 outline-none h-24 resize-none focus:ring-2 focus:ring-amber-500" placeholder={t('pj.observationsPlaceholder')} />
+                    <EditableTextarea value={project.observation || ''} disabled={!editable} onSave={v => debouncedUpdate('observation', v)} className="w-full bg-amber-50 border border-amber-100 rounded-2xl px-4 py-2 text-[11px] font-medium italic text-amber-900 outline-none h-24 resize-none focus:ring-2 focus:ring-amber-500" placeholder={t('pj.observationsPlaceholder')} />
                   </div>
                 </div>
               </InfoCard>
@@ -362,7 +353,7 @@ export default function ProjectDetail() {
                 <div className="mt-3">
                   <DetailLabel label="Contrato (Excel: CONTRATO)" help={PROJECT_FIELD_HELP.contract_url} />
                   <div className="flex gap-2">
-                    <input type="text" value={project.contract_url || ''} disabled={!editable} onChange={e => debouncedUpdate('contract_url', e.target.value)} placeholder={t('pj.contractPlaceholder')} className="input-light flex-1" />
+                    <EditableField type="text" value={project.contract_url || ''} disabled={!editable} onSave={v => debouncedUpdate('contract_url', v)} placeholder={t('pj.contractPlaceholder')} className="input-light flex-1" />
                     {project.contract_url && /^https?:\/\//i.test(project.contract_url) && (
                       <a href={project.contract_url} target="_blank" rel="noreferrer" className="btn-soft text-[10px]" title={t('pj.openContract')}>↗</a>
                     )}
@@ -419,11 +410,11 @@ export default function ProjectDetail() {
                         {profiles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
                     ) : (
-                      <input
+                      <EditableField
                         type="text"
                         value={project.owner_label || ''}
                         disabled={!editable}
-                        onChange={e => debouncedUpdate('owner_label', e.target.value)}
+                        onSave={v => debouncedUpdate('owner_label', v)}
                         placeholder={t('projects.field.ownerLabelPlaceholder')}
                         className="input-light"
                       />
@@ -431,7 +422,7 @@ export default function ProjectDetail() {
                   </div>
                   <div>
                     <DetailLabel label={t('pj.dependencyLabel')} help={PROJECT_FIELD_HELP.client_lead} />
-                    <input type="text" value={project.client_lead || ''} disabled={!editable} onChange={e => debouncedUpdate('client_lead', e.target.value)} placeholder={t('pj.dependencyPlaceholder')} className="input-light" />
+                    <EditableField type="text" value={project.client_lead || ''} disabled={!editable} onSave={v => debouncedUpdate('client_lead', v)} placeholder={t('pj.dependencyPlaceholder')} className="input-light" />
                   </div>
                 </div>
               </InfoCard>
@@ -1447,7 +1438,14 @@ function MilestonesPanel({ project, editable, onChange }) {
               {m.completed && <ChevronRight className="w-3 h-3 rotate-90" />}
             </button>
             <div className="flex-1 min-w-0">
-              <div className={`text-[12px] font-semibold ${m.completed ? 'line-through text-ink-400' : ''}`}>{m.name}</div>
+              <div className={`text-[12px] font-semibold ${m.completed ? 'line-through text-ink-400' : ''} flex items-center gap-1.5 flex-wrap`}>
+                <span>{m.name}</span>
+                {m.auto_kind && (
+                  <span className="text-[9px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full" title="Hito generado automáticamente al completar la fase / el proyecto">
+                    Auto
+                  </span>
+                )}
+              </div>
               <div className="text-[10px] text-ink-400 tabular">{new Date(m.target_date + 'T00:00:00').toLocaleDateString(dateLocale, { day: '2-digit', month: 'short', year: 'numeric' })}</div>
             </div>
             {editable && <button onClick={() => remove(m.id)} className="text-ink-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3" /></button>}

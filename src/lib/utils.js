@@ -78,12 +78,15 @@ export function clampSpanToPhase({ start_week, start_day, duration }, phase, max
   const wd = weekDayFromIndex(idx);
   return { start_week: wd.week, start_day: wd.day, duration: dur };
 }
+// Cumplimiento del proyecto = promedio del cumplimiento de TODAS las fases.
+// Una fase sin actividades cuenta como 0% (trabajo pendiente). Si el proyecto
+// no tiene ninguna fase, cae a `manual_progress`.
 export const calcProjectProgress = (project) => {
-  const totalTasks = (project?.phases || []).reduce((a, ph) => a + (ph.tasks?.length || 0), 0);
-  if (totalTasks === 0) {
+  const phases = project?.phases || [];
+  if (phases.length === 0) {
     return Number.isFinite(project?.manual_progress) ? project.manual_progress : 0;
   }
-  return Math.round(project.phases.reduce((a, ph) => a + calcPhaseProgress(ph), 0) / project.phases.length);
+  return Math.round(phases.reduce((a, ph) => a + calcPhaseProgress(ph), 0) / phases.length);
 };
 
 export function healthSignal(project, prog) {
