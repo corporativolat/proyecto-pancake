@@ -1,5 +1,6 @@
 import { AlertOctagon, CheckCircle2 } from 'lucide-react';
 import { isBlocked } from '../lib/utils';
+import { EditableTextarea } from './EditableField.jsx';
 
 // Card de bloqueo activo del proyecto (mig-34: blocker_note + blocker_since).
 // Cuando el textarea se llena por primera vez el trigger SQL sella blocker_since
@@ -33,9 +34,9 @@ export default function BlockerCard({ project, editable = false, onChange }) {
         )}
       </div>
       {editable ? (
-        <textarea
+        <EditableTextarea
           value={project?.blocker_note || ''}
-          onChange={e => onChange?.(e.target.value)}
+          onSave={v => onChange?.(v)}
           placeholder="Describe el bloqueo (qué falta, quién, próximo paso). Al rellenar este campo se notifica al equipo."
           rows={3}
           className={`w-full rounded-xl px-3 py-2 text-[12px] font-medium leading-snug resize-none outline-none focus:ring-2 ${blocked ? 'bg-white border border-red-200 text-red-900 focus:ring-red-300' : 'bg-white border border-ink-200 text-ink-700 focus:ring-violet-300'}`}

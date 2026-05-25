@@ -133,6 +133,7 @@ export default function TeamMetricsBar({ projects }) {
       {showModal && (
         <TeamMetricsModal
           metrics={metrics}
+          projects={projects}
           onClose={() => setShowModal(false)}
         />
       )}

@@ -16,13 +16,15 @@ import { reduced } from '../lib/motion';
 import { useT } from '../lib/i18n.jsx';
 import { STATUSES } from '../lib/utils';
 import { downloadCSV, downloadPDF } from '../lib/exporters';
+import { useStore } from '../lib/store';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
 const HEALTH_LABEL = { green: 'On track', amber: 'En riesgo', red: 'Atrasado', gray: 'Sin datos' };
 
-export default function TeamMetricsModal({ metrics, onClose }) {
+export default function TeamMetricsModal({ metrics, projects, onClose }) {
   const { t } = useT();
+  const profiles = useStore(s => s.profiles);
   const overlayRef = useRef(null);
   const cardRef = useRef(null);
 
@@ -101,6 +103,8 @@ export default function TeamMetricsModal({ metrics, onClose }) {
       subtitle: `${metrics.length} ${metrics.length === 1 ? 'proyecto' : 'proyectos'} · ${new Date().toLocaleDateString()}`,
       columns,
       rows: metrics,
+      projects,
+      profiles,
     });
   };
   const handleCSV = () => {
