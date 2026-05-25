@@ -105,17 +105,22 @@ export default function ProjectDetail() {
   const project = projects.find(p => p.id === id);
   const editable = !!project && (can('editAll') || project.owner_id === profile?.id);
 
-  // Antes había un setTimeout(500) interno aquí para coalescer escrituras —
-  // pero EditableField ya debouncea 500ms desde la última tecla, así que el
-  // doble debounce sólo ampliaba la ventana en la que un refresh stale de
-  // realtime (otro evento durante esos ~1000ms) podía pisar el patch
-  // optimista en el store y hacer flickear el breadcrumb / títulos al
-  // valor viejo (el usuario lo percibía como "el texto se borra"). Ahora
-  // el save al DB sale inmediato; selects/fechas/etc. tampoco lo necesitan.
-  const debouncedUpdate = useCallback(async (field, value) => {
+  // Save al store + DB. Por defecto el DB write sale inmediato (selects, dates,
+  // EditableField que ya debouncea internamente 500ms). Para controles que
+  // disparan onChange en ráfaga (sliders) pasar delay > 0 para coalescer.
+  // Antes había un setTimeout(500) FIJO aquí que sumado al debounce de
+  // EditableField abría una ventana de ~1s en la que un refresh stale de
+  // realtime pisaba el patch optimista y hacía flickear breadcrumb/títulos.
+  const debounceRef = useRef({});
+  const debouncedUpdate = useCallback((field, value, delay = 0) => {
     patchProject(id, { [field]: value });
-    try { await updateProject(id, { [field]: value }); }
-    catch (e) { showToast(t('pj.errorSaving') + e.message); }
+    clearTimeout(debounceRef.current[field]);
+    const write = async () => {
+      try { await updateProject(id, { [field]: value }); }
+      catch (e) { showToast(t('pj.errorSaving') + e.message); }
+    };
+    if (delay > 0) debounceRef.current[field] = setTimeout(write, delay);
+    else write();
   }, [id, patchProject, showToast, t]);
 
   // (Eliminado el toggle de .shrink en scroll: clipaba el título/botones cuando
@@ -324,12 +329,51 @@ export default function ProjectDetail() {
                   />
                 </div>
                 <div className="mt-3">
-                  <DetailLabel label="% Cumplimiento (Excel)" help="Calculado desde las actividades del proyecto. Edita el manual_progress si no hay tareas." />
+                  <DetailLabel
+                    label="% Cumplimiento (Excel)"
+                    help={
+                      Number.isFinite(project.manual_progress)
+                        ? 'Manual: mueves el slider para forzar el %. Pulsa Auto para volver al cálculo por actividades.'
+                        : 'Auto: promedio del avance de las actividades. Mueve el slider para forzar un % manual.'
+                    }
+                  />
                   <div className="flex items-center gap-3">
                     <div className="flex-1 bg-ink-100 h-2.5 rounded-full overflow-hidden">
                       <div className="progress-fill h-full transition-all duration-700" style={{ width: projProg + '%' }} />
                     </div>
-                    <span className="text-sm font-black text-violet-600 tabular">{projProg}%</span>
+                    <span className="text-sm font-black text-violet-600 tabular w-12 text-right">{projProg}%</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="range" min="0" max="100" step="1"
+                      value={projProg}
+                      disabled={!editable}
+                      onChange={e => debouncedUpdate('manual_progress', parseInt(e.target.value), 300)}
+                      className="flex-1 accent-violet-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <input
+                      type="number" min="0" max="100"
+                      value={projProg}
+                      disabled={!editable}
+                      onChange={e => {
+                        const n = parseInt(e.target.value);
+                        if (Number.isFinite(n)) debouncedUpdate('manual_progress', Math.max(0, Math.min(100, n)), 300);
+                      }}
+                      className="input-light w-16 text-center !py-1 !text-[12px]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => debouncedUpdate('manual_progress', null)}
+                      disabled={!editable || !Number.isFinite(project.manual_progress)}
+                      className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full transition whitespace-nowrap ${
+                        Number.isFinite(project.manual_progress)
+                          ? 'bg-violet-100 text-violet-700 hover:bg-violet-200'
+                          : 'bg-emerald-100 text-emerald-700 cursor-default'
+                      } disabled:opacity-50`}
+                      title="Volver al cálculo automático por actividades"
+                    >
+                      {Number.isFinite(project.manual_progress) ? 'Manual · Pulsa para Auto' : 'Auto'}
+                    </button>
                   </div>
                 </div>
               </InfoCard>

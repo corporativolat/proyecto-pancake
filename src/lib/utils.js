@@ -78,14 +78,16 @@ export function clampSpanToPhase({ start_week, start_day, duration }, phase, max
   const wd = weekDayFromIndex(idx);
   return { start_week: wd.week, start_day: wd.day, duration: dur };
 }
-// Cumplimiento del proyecto = promedio del cumplimiento de TODAS las fases.
-// Una fase sin actividades cuenta como 0% (trabajo pendiente). Si el proyecto
-// no tiene ninguna fase, cae a `manual_progress`.
+// Cumplimiento del proyecto.
+//   - Si `manual_progress` está setteado (0-100, no null), gana — el usuario
+//     forzó el porcentaje manualmente desde el slider del header (caso típico
+//     de proyectos seedeados del Excel donde aún no se han creado fases).
+//   - Si está null y hay fases, se promedia el cumplimiento de TODAS las fases.
+//   - Sin fases y sin manual_progress, 0.
 export const calcProjectProgress = (project) => {
+  if (Number.isFinite(project?.manual_progress)) return project.manual_progress;
   const phases = project?.phases || [];
-  if (phases.length === 0) {
-    return Number.isFinite(project?.manual_progress) ? project.manual_progress : 0;
-  }
+  if (phases.length === 0) return 0;
   return Math.round(phases.reduce((a, ph) => a + calcPhaseProgress(ph), 0) / phases.length);
 };
 
