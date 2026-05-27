@@ -5,7 +5,7 @@ import gsap from 'gsap';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcPhaseProgress, calcProjectProgress, taskProgress, projectMaxDayIndex, clampSpanToProject, clampSpanToPhase, STATUSES, PROJECT_FIELD_HELP, effectiveHealth, fmtMoney, isBlocked } from '../lib/utils';
+import { calcPhaseProgress, calcProjectProgress, calcProjectProgressAuto, taskProgress, projectMaxDayIndex, clampSpanToProject, clampSpanToPhase, STATUSES, PROJECT_FIELD_HELP, effectiveHealth, fmtMoney, isBlocked } from '../lib/utils';
 import Avatar from '../components/Avatar.jsx';
 import Comments from '../components/Comments.jsx';
 import ActivityFeed from '../components/ActivityFeed.jsx';
@@ -125,6 +125,8 @@ export default function ProjectDetail() {
   if (!project) return <div className="flex-1 flex items-center justify-center text-ink-400">{t('pj.notFound')}</div>;
 
   const projProg = calcProjectProgress(project);
+  const autoProg = calcProjectProgressAuto(project);
+  const isManualProgress = Number.isFinite(project?.manual_progress);
 
   const maxDayIndex = projectMaxDayIndex(project);
 
@@ -324,13 +326,37 @@ export default function ProjectDetail() {
                   />
                 </div>
                 <div className="mt-3">
-                  <DetailLabel label="% Cumplimiento (Excel)" help="Calculado desde las actividades del proyecto. Edita el manual_progress si no hay tareas." />
+                  <DetailLabel label="% Cumplimiento (Excel)" help="Automático = promedio de las actividades. Mueve el slider para forzar un valor manual (override)." />
                   <div className="flex items-center gap-3">
                     <div className="flex-1 bg-ink-100 h-2.5 rounded-full overflow-hidden">
                       <div className="progress-fill h-full transition-all duration-700" style={{ width: projProg + '%' }} />
                     </div>
-                    <span className="text-sm font-black text-violet-600 tabular">{projProg}%</span>
+                    <span className="text-sm font-black text-violet-600 tabular w-12 text-right">{projProg}%</span>
                   </div>
+                  {editable && (
+                    <div className="mt-2 flex items-center gap-3 flex-wrap">
+                      <input
+                        type="range" min="0" max="100" step="1"
+                        value={projProg}
+                        onChange={e => debouncedUpdate('manual_progress', parseInt(e.target.value, 10))}
+                        className="flex-1 min-w-[160px] accent-violet-600"
+                      />
+                      {isManualProgress ? (
+                        <button
+                          type="button"
+                          onClick={() => debouncedUpdate('manual_progress', null)}
+                          className="text-[10px] font-bold uppercase tracking-widest bg-ink-100 hover:bg-ink-200 text-ink-600 rounded-full px-3 py-1"
+                          title={`Volver al cálculo automático (${autoProg}%)`}
+                        >
+                          Auto ({autoProg}%)
+                        </button>
+                      ) : (
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-ink-400" title="Calculado desde las actividades">
+                          Automático
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </InfoCard>
 
