@@ -5,7 +5,7 @@ import gsap from 'gsap';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcPhaseProgress, calcProjectProgress, calcProjectProgressAuto, taskProgress, projectMaxDayIndex, clampSpanToProject, clampSpanToPhase, STATUSES, PROJECT_FIELD_HELP, effectiveHealth, fmtMoney, isBlocked } from '../lib/utils';
+import { calcPhaseProgress, calcProjectProgress, calcProjectProgressAuto, taskProgress, projectMaxDayIndex, clampSpanToProject, clampSpanToPhase, STATUSES, PROJECT_FIELD_HELP, effectiveHealth, healthEmoji, fmtMoney, isBlocked } from '../lib/utils';
 import Avatar from '../components/Avatar.jsx';
 import Comments from '../components/Comments.jsx';
 import ActivityFeed from '../components/ActivityFeed.jsx';
@@ -293,7 +293,15 @@ export default function ProjectDetail() {
                   <div>
                     <DetailLabel label={t('pj.healthLabel')} help={t('pj.healthHelp')} />
                     <div className="flex items-center gap-2">
-                      <span className={`status-dot status-${effectiveHealth(project, projProg)}`} />
+                      {(() => {
+                        const h = effectiveHealth(project, projProg);
+                        return (
+                          <span className="inline-flex items-center gap-1" title={t(`health.state.${h}`)} aria-label={t(`health.state.${h}`)}>
+                            <span className={`status-dot status-${h}`} aria-hidden="true" />
+                            <span className="text-base leading-none" aria-hidden="true">{healthEmoji(h)}</span>
+                          </span>
+                        );
+                      })()}
                       <select
                         value={project.health_override ?? ''}
                         disabled={!can('editAll')}

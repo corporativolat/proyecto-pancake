@@ -100,8 +100,18 @@ export function healthSignal(project, prog) {
   if (!project.start_date) return 'gray';
   const start = new Date(project.start_date);
   const now = new Date();
-  const elapsedWeeks = Math.max(1, (now - start) / (1000 * 60 * 60 * 24 * 7));
-  const expected = Math.min(100, (elapsedWeeks / 8) * 100);
+  // Avance esperado según el tiempo transcurrido sobre la duración planeada
+  // (start_date → projected_end_date). Si no hay fecha fin, cae al supuesto
+  // histórico de 8 semanas.
+  const end = project.projected_end_date ? new Date(project.projected_end_date) : null;
+  let expected;
+  if (end && end > start) {
+    const elapsed = Math.max(0, now - start);
+    expected = Math.min(100, (elapsed / (end - start)) * 100);
+  } else {
+    const elapsedWeeks = Math.max(1, (now - start) / (1000 * 60 * 60 * 24 * 7));
+    expected = Math.min(100, (elapsedWeeks / 8) * 100);
+  }
   if (prog >= expected - 10) return 'green';
   if (prog >= expected - 25) return 'amber';
   return 'red';
@@ -115,6 +125,31 @@ export function effectiveHealth(project, prog) {
   if (ov === 2) return 'amber';
   if (ov === 3) return 'red';
   return healthSignal(project, prog);
+}
+
+// Indicador de salud ACCESIBLE (no depende del color — para daltónicos).
+// Emoji por estado + clave i18n del label para el tooltip.
+export const HEALTH_META = {
+  green: { emoji: '🙂', i18n: 'health.state.green' },
+  amber: { emoji: '😐', i18n: 'health.state.amber' },
+  red:   { emoji: '☹️', i18n: 'health.state.red' },
+  gray:  { emoji: '⚪', i18n: 'health.state.gray' },
+};
+export const healthEmoji = (h) => (HEALTH_META[h] || HEALTH_META.gray).emoji;
+
+// Salud agregada del portafolio. Pondera cada proyecto por su salud efectiva
+// (verde=100, amarillo=50, rojo=0); los grises (sin datos) NO entran al score
+// para no castigar proyectos que aún no tienen fecha. Devuelve el score 0-100
+// más el conteo por estado para mostrar el desglose.
+export function portfolioHealth(projects) {
+  const counts = { green: 0, amber: 0, red: 0, gray: 0 };
+  for (const p of (projects || [])) {
+    const h = effectiveHealth(p, calcProjectProgress(p));
+    counts[h] = (counts[h] || 0) + 1;
+  }
+  const scored = counts.green + counts.amber + counts.red;
+  const score = scored ? Math.round((counts.green * 100 + counts.amber * 50) / scored) : 0;
+  return { score, scored, ...counts };
 }
 
 // Campos críticos para considerar un proyecto "completo".
