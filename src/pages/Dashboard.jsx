@@ -6,7 +6,7 @@ import { FolderKanban, Zap, CheckCircle2, TrendingUp, Search, AlertTriangle, Che
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcProjectProgress, effectiveHealth, STATUSES, vencimiento } from '../lib/utils';
+import { calcProjectProgress, effectiveHealth, portfolioHealth, STATUSES, vencimiento } from '../lib/utils';
 import { countUp, animateBars, staggerIn, reduced } from '../lib/motion';
 import Avatar from '../components/Avatar.jsx';
 import ActivityFeed from '../components/ActivityFeed.jsx';
@@ -50,12 +50,12 @@ export default function Dashboard() {
   const profileMap = useMemo(() => new Map(profiles.map(u => [u.id, u])), [profiles]);
   const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
 
-  const { total, finished, active, avg } = useMemo(() => {
+  const { total, finished, active, health } = useMemo(() => {
     const total = visible.length;
     const finished = visible.filter(p => p.status === 'Finalizado').length;
     const active = visible.filter(p => ['En Desarrollo', 'Planeación'].includes(p.status)).length;
-    const avg = total ? Math.round(visible.reduce((a, p) => a + calcProjectProgress(p), 0) / total) : 0;
-    return { total, finished, active, avg };
+    const health = portfolioHealth(visible);
+    return { total, finished, active, health };
   }, [visible]);
   const overdueList = useMemo(
     () => visible
@@ -92,7 +92,7 @@ export default function Dashboard() {
     });
     animateBars(ref.current);
     staggerIn(ref.current);
-  }, [total, active, finished, avg, filter]);
+  }, [total, active, finished, health.score, filter]);
 
   const filtered = useMemo(() => {
     let list = visible;
@@ -170,14 +170,20 @@ export default function Dashboard() {
           <KPI label={t('dash.kpi.active')} target={active} icon={<Zap className="w-4 h-4 text-amber-600" />} iconBg="bg-amber-50" valueClass="text-amber-500" />
           <KPI label={t('dash.kpi.finished')} target={finished} icon={<CheckCircle2 className="w-4 h-4 text-emerald-600" />} iconBg="bg-emerald-50" valueClass="text-emerald-500" />
           <KPI label={t('dash.kpi.overdue')} target={overdueCount} icon={<AlertTriangle className="w-4 h-4 text-red-600" />} iconBg="bg-red-50" valueClass={overdueCount ? 'text-red-500' : 'text-ink-400'} />
-          <div className="kpi-card kpi-primary" data-stagger>
+          <div className="kpi-card kpi-primary" data-stagger title={t('dash.kpi.healthHelp')}>
             <div className="flex justify-between items-start mb-3">
               <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{t('dash.kpi.health')}</div>
               <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center"><TrendingUp className="w-4 h-4 text-white" /></div>
             </div>
-            <div className="text-4xl font-black tabular" data-kpi={avg} data-suffix="%">0%</div>
+            <div className="text-4xl font-black tabular" data-kpi={health.score} data-suffix="%">0%</div>
             <div className="w-full h-1.5 bg-white/15 rounded-full mt-3 overflow-hidden">
-              <div className="h-full bg-white rounded-full" data-bar={avg} style={{ width: 0 }} />
+              <div className="h-full bg-white rounded-full" data-bar={health.score} style={{ width: 0 }} />
+            </div>
+            <div className="flex items-center gap-3 mt-3 text-[11px] font-bold tabular">
+              <span title={t('health.state.green')}>🙂 {health.green}</span>
+              <span title={t('health.state.amber')}>😐 {health.amber}</span>
+              <span title={t('health.state.red')}>☹️ {health.red}</span>
+              {health.gray > 0 && <span className="opacity-60" title={t('health.state.gray')}>⚪ {health.gray}</span>}
             </div>
           </div>
         </div>

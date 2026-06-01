@@ -6,7 +6,7 @@ import { Draggable } from 'gsap/Draggable';
 import { useStore } from '../lib/store';
 import { useAuth } from '../lib/auth.jsx';
 import { useT } from '../lib/i18n.jsx';
-import { calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, vencimiento, isFinalStatus, effectiveHealth, fmtMoney, daysSinceStart, projectDurationDays, projectAllCategoryIds, isBlocked } from '../lib/utils';
+import { calcProjectProgress, STATUSES, PROJECT_FIELD_HELP, PROJECT_CATEGORY_HELP, vencimiento, isFinalStatus, effectiveHealth, healthEmoji, fmtMoney, daysSinceStart, projectDurationDays, projectAllCategoryIds, isBlocked } from '../lib/utils';
 import { reduced } from '../lib/motion';
 import { createProject, friendlyDbError } from '../lib/data';
 import { logger } from '../lib/logger';
@@ -70,6 +70,7 @@ export default function Projects() {
   const [showNew, setShowNew] = useState(false);
   const [newMode, setNewMode] = useState('inline');
   const [draftInitial, setDraftInitial] = useState(null);
+  const [obsPopup, setObsPopup] = useState(null); // { title, text } para leer observación completa
 
   // Restaurar borrador + handle openNew state.
   useEffect(() => {
@@ -478,7 +479,16 @@ export default function Projects() {
                           </span>
                         </td>
                         <td>
-                          <span className={`pm-health-dot pm-health-${effectiveHealth(p, prog)}`} title={effectiveHealth(p, prog)} />
+                          {(() => {
+                            const h = effectiveHealth(p, prog);
+                            const label = t(`health.state.${h}`);
+                            return (
+                              <span className="inline-flex items-center gap-1.5" title={label} aria-label={label}>
+                                <span className={`pm-health-dot pm-health-${h}`} aria-hidden="true" />
+                                <span className="text-base leading-none" aria-hidden="true">{healthEmoji(h)}</span>
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td style={{ minWidth: 130 }}>
                           <div className="pm-progress-label">{prog}%</div>
@@ -494,9 +504,14 @@ export default function Projects() {
                         </td>
                         <td className="hidden lg:table-cell" style={{ maxWidth: 220 }}>
                           {p.observation
-                            ? <span className="text-[11px] text-ink-600 line-clamp-2 italic" title={p.observation}>
+                            ? <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setObsPopup({ title: p.title, text: p.observation }); }}
+                                className="text-left w-full text-[11px] text-ink-600 line-clamp-2 italic hover:text-violet-700 hover:underline decoration-dotted cursor-pointer"
+                                title={t('projects.obs.open')}
+                              >
                                 {p.observation}
-                              </span>
+                              </button>
                             : <span className="pm-muted">—</span>}
                         </td>
                         <td className="pm-cell-mono">
@@ -559,7 +574,44 @@ export default function Projects() {
           onToggleMode={() => setNewMode('inline')}
         />
       )}
+
+      {obsPopup && <ObservationPopup data={obsPopup} onClose={() => setObsPopup(null)} t={t} />}
     </section>
+  );
+}
+
+// Popup ligero para leer una observación completa sin abrir el proyecto.
+function ObservationPopup({ data, onClose, t }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-ink-900 rounded-2xl shadow-2xl border border-ink-100 dark:border-ink-700 w-full max-w-lg max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-ink-100 dark:border-ink-700">
+          <div className="min-w-0">
+            <div className="text-[10px] font-black uppercase tracking-widest text-amber-500 flex items-center gap-1.5">
+              <MessageSquare className="w-3 h-3" /> {t('projects.obs.title')}
+            </div>
+            <div className="text-sm font-bold text-ink-800 dark:text-ink-100 truncate">{data.title}</div>
+          </div>
+          <button type="button" onClick={onClose} className="pm-icon-btn flex-shrink-0" title={t('projects.close')}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="px-5 py-4 overflow-y-auto text-sm text-ink-700 dark:text-ink-200 whitespace-pre-wrap leading-relaxed">
+          {data.text}
+        </div>
+      </div>
+    </div>
   );
 }
 
