@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Send, Trash2, MessageCircle } from 'lucide-react';
 import gsap from 'gsap';
 import { useAuth } from '../lib/auth.jsx';
+import { supabase } from '../lib/supabase';
 import { fetchComments, createComment, deleteComment } from '../lib/comments';
 import { reduced } from '../lib/motion';
 import { useToast } from '../lib/toast';
@@ -43,6 +44,17 @@ export default function Comments({ projectId }) {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (projectId) load(); }, [projectId]);
+
+  // Realtime: comentarios de otros usuarios aparecen sin recargar.
+  useEffect(() => {
+    if (!projectId) return;
+    const ch = supabase
+      .channel(`comments-${projectId}-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'pro_gestion', table: 'comments', filter: `project_id=eq.${projectId}` }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   useEffect(() => {
     if (reduced || !listRef.current) return;

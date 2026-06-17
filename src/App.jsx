@@ -20,6 +20,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail.jsx'));
 const Admin = lazy(() => import('./pages/Admin.jsx'));
 const AdminReports = lazy(() => import('./pages/AdminReports.jsx'));
+const AdminActivity = lazy(() => import('./pages/AdminActivity.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const Clients = lazy(() => import('./pages/Clients.jsx'));
 const Teams = lazy(() => import('./pages/Teams.jsx'));
@@ -196,6 +197,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Navigate to={resolveLanding(profile, can)} replace />} />
               {can('viewKPIs') && <Route path="/dashboard" element={<Dashboard />} />}
+              {can('viewKPIs') && <Route path="/admin/activity" element={<AdminActivity />} />}
               <Route path="/team" element={<Team />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:id" element={<ProjectDetail />} />

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { fetchActivity } from '../lib/comments';
 import Avatar from './Avatar.jsx';
 import { useT } from '../lib/i18n.jsx';
@@ -36,13 +37,25 @@ export default function ActivityFeed({ projectId = null, limit = 30, compact = f
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    setError(null);
-    fetchActivity({ projectId, limit })
-      .then(rows => { if (alive) setItems(rows || []); })
-      .catch(e => { if (alive) { logger.error('ActivityFeed:', e); setError(e.message || String(e)); } })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    const load = (withSpinner = false) => {
+      if (withSpinner) setLoading(true);
+      setError(null);
+      fetchActivity({ projectId, limit })
+        .then(rows => { if (alive) setItems(rows || []); })
+        .catch(e => { if (alive) { logger.error('ActivityFeed:', e); setError(e.message || String(e)); } })
+        .finally(() => { if (alive) setLoading(false); });
+    };
+    load(true);
+
+    // Realtime: actividad nueva (incl. de otros usuarios y triggers DB) sin recargar.
+    const sub = { event: '*', schema: 'pro_gestion', table: 'activity' };
+    if (projectId) sub.filter = `project_id=eq.${projectId}`;
+    const ch = supabase
+      .channel(`activity-${projectId || 'all'}-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', sub, () => load(false))
+      .subscribe();
+
+    return () => { alive = false; supabase.removeChannel(ch); };
   }, [projectId, limit]);
 
   const filtered = useMemo(() => {

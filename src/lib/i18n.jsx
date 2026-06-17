@@ -7,9 +7,12 @@ import { logger } from './logger';
 const DICT = {
   es: {
     'nav.dashboard': 'Panel Gerencial',
+    'nav.activity': 'Notif. de proyectos',
     'nav.team': 'Mi Equipo',
     'nav.projects': 'Proyectos',
     'nav.admin': 'Administración',
+    'adminActivity.title': 'Notificaciones de proyectos',
+    'adminActivity.subtitle': 'Reporte en tiempo real de todo lo que pasa en los proyectos: cambios de estado, fechas, responsables, actividades, hitos y comentarios.',
     'nav.settings': 'Configuración',
     'nav.recents': 'Recientes',
     'nav.newProject': 'NUEVO PROYECTO',
@@ -586,9 +589,12 @@ const DICT = {
   },
   en: {
     'nav.dashboard': 'Executive Panel',
+    'nav.activity': 'Project notifs',
     'nav.team': 'My Team',
     'nav.projects': 'Projects',
     'nav.admin': 'Administration',
+    'adminActivity.title': 'Project notifications',
+    'adminActivity.subtitle': 'Real-time report of everything happening across projects: status, dates, owners, activities, milestones and comments.',
     'nav.settings': 'Settings',
     'nav.recents': 'Recent',
     'nav.newProject': 'NEW PROJECT',
@@ -1165,9 +1171,12 @@ const DICT = {
   },
   pt: {
     'nav.dashboard': 'Painel Executivo',
+    'nav.activity': 'Notif. de projetos',
     'nav.team': 'Minha Equipe',
     'nav.projects': 'Projetos',
     'nav.admin': 'Administração',
+    'adminActivity.title': 'Notificações de projetos',
+    'adminActivity.subtitle': 'Relatório em tempo real de tudo o que acontece nos projetos: status, datas, responsáveis, atividades, marcos e comentários.',
     'nav.settings': 'Configurações',
     'nav.recents': 'Recentes',
     'nav.newProject': 'NOVO PROJETO',

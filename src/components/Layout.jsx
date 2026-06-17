@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FolderKanban, ShieldCheck, Plus, LogOut, Settings as SettingsIcon, Search, Moon, Sun, Menu, Briefcase, Users2 } from 'lucide-react';
+import { LayoutDashboard, Users, FolderKanban, ShieldCheck, Plus, LogOut, Settings as SettingsIcon, Search, Moon, Sun, Menu, Briefcase, Users2, Activity } from 'lucide-react';
 import NotifBell from './NotifBell.jsx';
 import gsap from 'gsap';
 import { useAuth } from '../lib/auth.jsx';
@@ -97,6 +97,7 @@ export default function Layout({ children, onOpenCmd, onOpenShort }) {
 
         <nav ref={navRef} className="flex-1 overflow-y-auto p-4 space-y-1 scroller">
           {can('viewKPIs') && <NavItem to="/dashboard" icon={<LayoutDashboard className="w-4 h-4" />}>{t('nav.dashboard')}</NavItem>}
+          {can('viewKPIs') && <NavItem to="/admin/activity" icon={<Activity className="w-4 h-4" />}>{t('nav.activity')}</NavItem>}
           <NavItem to="/team" icon={<Users className="w-4 h-4" />}>{t('nav.team')}</NavItem>
           <NavItem to="/projects" icon={<FolderKanban className="w-4 h-4" />}>{t('nav.projects')}</NavItem>
           {can('manageClients') && <NavItem to="/clients" icon={<Briefcase className="w-4 h-4" />}>{t('nav.clients')}</NavItem>}
