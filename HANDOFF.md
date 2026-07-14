@@ -277,9 +277,14 @@ Pasos (en el dashboard de Vercel):
 ### 13.3 Supabase — transferir proyecto
 Proyecto: **`ajtikvqfhylhafuwemnq`** (`https://ajtikvqfhylhafuwemnq.supabase.co`).
 
+**Refs reales (auditados 2026-07-14):**
+- DB de producción con datos = **`ajtikvqfhylhafuwemnq`** (org de samintone).
+- Proyecto vacío en la cuenta corporativa = **`scxbiddquodrdhqvhphz`** ("corporativo@pancake.lat's Project"), org **`ggfltmfdlvhyrmdexggh`**.
+
 **Opción A — Transfer de proyecto (recomendada, conserva datos y URL):**
-1. Dashboard → el proyecto → **Settings → General → Transfer project**.
-2. Elegir la **org corporativa** destino. Requisitos: ser owner en ambas orgs; la org destino suele necesitar **plan pago** para recibir el transfer. Puede haber breve indisponibilidad.
+1. Entrar con la cuenta dueña de `ajtikvqfhylhafuwemnq` (samintone).
+2. Agregar `corporativo@pancake.lat` como **Owner** de esa org de origen (Organization → Team → Invite). El transfer exige ser miembro de **ambas** orgs.
+3. Proyecto `ajtikvqfhylhafuwemnq` → **Settings → General → Transfer project** → elegir la org corporativa `ggfltmfdlvhyrmdexggh`. La org destino suele necesitar **plan pago (Pro)**. Ref y URL **no cambian** → Vercel no se toca.
 3. Como el ref (`ajtikvqfhylhafuwemnq`) y la URL **no cambian**, `VITE_SUPABASE_URL` y anon key **siguen válidos** → no hay que tocar el frontend.
 4. **Re-setear los secrets de edge functions** en la nueva org (no viajan con el transfer):
    ```bash
