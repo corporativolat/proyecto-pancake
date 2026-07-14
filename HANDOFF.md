@@ -246,3 +246,63 @@ Roles reales: `super_admin | admin | gerente | lider_equipos | lider_equipo | mi
 - Detalle por migración → `CLAUDE.md`.
 - Fuente del negocio → Google Sheet "Resumen" `1CI0Vbg4BtaPuTrTWJ84yyB3jIV6Hr8ar-BoVEUtsTCE`.
 - Acceso a datos → `src/lib/data.js`. Lógica → `src/lib/utils.js`. Permisos → `src/lib/auth.jsx`. Edge functions → `supabase/functions/`.
+
+---
+
+## 13. Traspaso de infraestructura (cambio de dueño → corporativolat)
+
+Al cambiar el repo git a **corporativolat**, hay que mover también **Vercel** y **Supabase** a la cuenta corporativa. Ambas son operaciones de **dashboard** (no hay CLI/API para transferir dueño de proyecto).
+
+### 13.1 Git — HECHO
+- Repo destino: **`github.com/corporativolat/proyecto-pancake`** (público).
+- HANDOFF y código ya viven ahí (`main`).
+- Repo viejo `samintone2106/proyecto-pancake` queda como histórico / se puede archivar.
+
+### 13.2 Vercel — transferir proyecto
+Hosting actual: Vite build estático + SPA rewrite (`vercel.json`). Dominios: `app.pancake.lat` (portal) / `progestion.pancake.lat` (staff).
+
+Pasos (en el dashboard de Vercel):
+1. **Crear/usar el team corporativo** en Vercel (el que tenga el dominio `pancake.lat`).
+2. Proyecto actual → **Settings → Advanced → Transfer Project** → elegir el team corporativo. *(O borrar el proyecto viejo y re-importar el repo desde cero — ver paso 4.)*
+3. **Reconectar el Git**: Settings → Git → conectar `corporativolat/proyecto-pancake` (branch `main`). Esto exige que la cuenta de Vercel tenga el **GitHub App de Vercel** autorizado sobre la org/cuenta corporativolat.
+4. Si se re-importa desde cero: New Project → import `corporativolat/proyecto-pancake` → framework **Vite** → build `npm run build` → output `dist`.
+5. **Re-cargar env vars** (Settings → Environment Variables, scope Production + Preview):
+   - `VITE_SUPABASE_URL = https://ajtikvqfhylhafuwemnq.supabase.co`
+   - `VITE_SUPABASE_ANON_KEY = <anon-key>`
+6. **Re-apuntar los dominios** `app.pancake.lat` / `progestion.pancake.lat` al proyecto en el nuevo team (Settings → Domains). Ajustar DNS si el registrador cambió.
+7. **Redeploy** y verificar login + carga de proyectos.
+
+> Los env de Vercel NO se transfieren solos en un re-import; hay que volver a pegarlos.
+
+### 13.3 Supabase — transferir proyecto
+Proyecto: **`ajtikvqfhylhafuwemnq`** (`https://ajtikvqfhylhafuwemnq.supabase.co`).
+
+**Opción A — Transfer de proyecto (recomendada, conserva datos y URL):**
+1. Dashboard → el proyecto → **Settings → General → Transfer project**.
+2. Elegir la **org corporativa** destino. Requisitos: ser owner en ambas orgs; la org destino suele necesitar **plan pago** para recibir el transfer. Puede haber breve indisponibilidad.
+3. Como el ref (`ajtikvqfhylhafuwemnq`) y la URL **no cambian**, `VITE_SUPABASE_URL` y anon key **siguen válidos** → no hay que tocar el frontend.
+4. **Re-setear los secrets de edge functions** en la nueva org (no viajan con el transfer):
+   ```bash
+   supabase secrets set SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
+     GMAIL_USER=... GMAIL_APP_PASSWORD="..." APP_BASE_URL=... PORTAL_BASE_URL=... \
+     TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_WHATSAPP_FROM=...
+   ```
+5. **Verificar los 2 cron jobs** (`notify-deadlines-daily`, `process-notifications-5min`): `select jobname, schedule, active from cron.job;`. Si la service_role key cambió, **actualizar el `Bearer <SERVICE_ROLE_JWT>` de los jobs** (re-correr el `cron.schedule` de mig-17 y mig-32 con el JWT nuevo).
+6. Re-deploy de las 4 edge functions: `supabase functions deploy <nombre> --no-verify-jwt`.
+
+**Opción B — Proyecto nuevo + migrar datos (si no se puede transferir):**
+- Crear proyecto nuevo en la org corporativa → correr `supabase-setup.sql` + `migration-2..41` en orden → `pg_dump`/restore de los datos → **cambia el ref y la URL** → actualizar `VITE_SUPABASE_URL`/anon key en Vercel + `APP_BASE_URL`/dominios. Más trabajo y más riesgo; usar solo si el transfer directo no está disponible.
+
+### 13.4 Accesos a dejar registrados (llenar con los valores reales)
+
+| Recurso | Dónde | Dueño / cuenta corporativa | Notas |
+|---|---|---|---|
+| Repo GitHub | `github.com/corporativolat/proyecto-pancake` | corporativolat | ✅ ya transferido |
+| Vercel | team: `<team-vercel-corporativo>` | `<email admin Vercel>` | proyecto: `<nombre-proyecto>`; dominios app./progestion.pancake.lat |
+| Supabase | org: `<org-supabase-corporativa>` | `<email admin Supabase>` | project ref `ajtikvqfhylhafuwemnq` |
+| Gmail remitente | `<cuenta@gmail>` | — | App Password activo (2FA on) |
+| Twilio | `<cuenta Twilio>` | — | opcional (WhatsApp) |
+| Dominio DNS | `<registrador>` | — | `pancake.lat` y subdominios |
+| Google Sheet "Resumen" | `1CI0Vbg4BtaPuTrTWJ84yyB3jIV6Hr8ar-BoVEUtsTCE` | — | fuente operativa del negocio |
+
+> ⚠️ **No pegar contraseñas ni keys en este archivo** (el repo es público). Guardar los secretos en un gestor (Vault de Supabase, 1Password, etc.) y acá solo referenciar **dónde** están y **quién** es el dueño.
